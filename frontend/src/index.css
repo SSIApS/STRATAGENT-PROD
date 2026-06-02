@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --stratagent-dark: #0a0e1a;
+  --stratagent-panel: #111827;
+  --stratagent-border: #1f2937;
+  --stratagent-gold: #f59e0b;
+  --stratagent-gold-dim: #92400e;
+  --stratagent-blue: #3b82f6;
+  --stratagent-green: #10b981;
+  --stratagent-red: #ef4444;
+  --stratagent-text: #f9fafb;
+  --stratagent-muted: #6b7280;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: var(--stratagent-dark);
+  color: var(--stratagent-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+}
+
+/* Intelligence Depth gauge animation */
+@keyframes gauge-fill {
+  from { width: 0%; }
+  to { width: var(--gauge-width); }
+}
+
+.gauge-bar {
+  animation: gauge-fill 1s ease-out forwards;
+}
+
+/* Convergence Index pulse */
+@keyframes convergence-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.convergence-ready {
+  animation: convergence-pulse 2s ease-in-out infinite;
+}
