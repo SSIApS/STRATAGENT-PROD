@@ -1,0 +1,28 @@
+# Secrets — never bake into image
+.env
+*.env
+.env.*
+secrets/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local data
+Suppliers/
+Products/
+
+# Dev tools
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
