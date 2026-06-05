@@ -65,4 +65,9 @@ export default function Layout({
       {/* Footer */}
       <footer className="px-6 py-4 text-xs border-t text-center"
               style={{ borderColor: 'var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
-        Jason L. Smith · Strategic Sales International ApS · info@strategic.dk · CVR: 41945621 · 
+        Jason L. Smith · Strategic Sales International ApS · info@strategic.dk · CVR: 41945621 · Roskilde, Denmark
+        &nbsp;·&nbsp; STRATAGENT — The Intelligence Behind Agentic Sales.
+      </footer>
+    </div>
+  )
+}
