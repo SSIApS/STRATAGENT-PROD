@@ -30,3 +30,10 @@ Thumbs.db
 .env.local
 .env.production
 secrets/
+
+# Claude session management — contains passwords, keep off GitHub
+STRATAGENT_SESSION_START.md
+STRATAGENT_Handover_Migration_Brief.docx
+# Local data folders — not code
+Suppliers/
+Products/

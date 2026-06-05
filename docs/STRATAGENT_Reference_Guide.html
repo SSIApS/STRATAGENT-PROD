@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STRATAGENT — Reference Guide</title>
+<style>
+  :root {
+    --gold: #c9a84c;
+    --gold-dim: #7a6030;
+    --gold-bg: #1c1400;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --panel: #12171f;
+    --dark: #0a0e14;
+    --border: #1e2530;
+    --blue: #3b82f6;
+    --green: #22c55e;
+    --green-bg: #071a0e;
+    --amber: #f59e0b;
+    --amber-bg: #2d1a00;
+    --red: #ef4444;
+    --purple: #7c3aed;
+    --teal: #10b981;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Layout ── */
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+
+  .sidebar-logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  .sidebar-logo .wordmark {
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    color: var(--gold);
+  }
+
+  .sidebar-logo .sub {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .sidebar nav a {
+    display: block;
+    padding: 6px 20px;
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.15s;
+    border-left: 2px solid transparent;
+  }
+
+  .sidebar nav a:hover,
+  .sidebar nav a.active {
+    color: var(--gold);
+    border-left-color: var(--gold);
+    background: var(--gold-bg);
+  }
+
+  .sidebar nav .nav-section {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #2d3748;
+    padding: 14px 20px 4px;
+  }
+
+  .main {
+    flex: 1;
+    max-width: 860px;
+    padding: 40px 48px;
+    overflow-y: auto;
+  }
+
+  /* ── Search ── */
+  .search-bar {
+    position: sticky;
+    top: 0;
+    background: var(--dark);
+    padding: 0 0 20px;
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+
+  .search-wrap {
+    position: relative;
+  }
+
+  .search-wrap svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+  }
+
+  #search {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px 10px 38px;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  #search:focus { border-color: var(--gold-dim); }
+  #search::placeholder { color: var(--muted); }
+
+  #search-count {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  mark {
+    background: #7a6030;
+    color: var(--gold);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+
+  /* ── Sections ── */
+  .section {
+    margin-bottom: 56px;
+    scroll-margin-top: 80px;
+  }
+
+  .section-title {
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--text);
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+
+  .section-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold);
+    margin: 24px 0 8px;
+    letter-spacing: 0.02em;
+  }
+
+  p { color: var(--text); margin-bottom: 10px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .card-desc {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── Threshold badges ── */
+  .threshold-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px 0;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  /* ── Score table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 12px 0 20px;
+  }
+
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  td.weight {
+    font-family: monospace;
+    font-weight: 700;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+
+  td.key { color: var(--muted); font-family: monospace; font-size: 11px; }
+
+  /* ── Signal type chips ── */
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+
+  .signal-chip {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+
+  .signal-chip .type {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .signal-chip .desc { color: #94a3b8; font-size: 11px; }
+
+  /* ── Agent cards ── */
+  .agent-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+
+  .agent-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .agent-name {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--gold);
+    margin-bottom: 2px;
+  }
+
+  .agent-status {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .agent-desc { font-size: 12px; color: var(--muted); }
+
+  /* ── Code / formula ── */
+  code {
+    background: #0f1623;
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #7dd3fc;
+  }
+
+  pre {
+    background: #0f1623;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #7dd3fc;
+    overflow-x: auto;
+    margin: 12px 0;
+  }
+
+  /* ── Callout ── */
+  .callout {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin: 12px 0;
+    border-left: 3px solid;
+  }
+
+  .callout-gold { background: var(--gold-bg); border-color: var(--gold); color: var(--gold); }
+  .callout-green { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+  .callout-amber { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); }
+
+  /* ── No results ── */
+  #no-results {
+    display: none;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .hidden { display: none !important; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1e2530; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="wordmark">STRATAGENT</div>
+    <div class="sub">Reference Guide</div>
+  </div>
+  <nav>
+    <div class="nav-section">Scoring Systems</div>
+    <a href="#intelligence-depth">Intelligence Depth</a>
+    <a href="#convergence-index">Convergence Index</a>
+    <a href="#buying-signals">Buying Signals</a>
+
+    <div class="nav-section">Modules</div>
+    <a href="#knowledge-base">Knowledge Base</a>
+    <a href="#field-intelligence">Field Intelligence</a>
+    <a href="#active-watch">Active Watch</a>
+    <a href="#output-engine">Output Engine</a>
+
+    <div class="nav-section">Agents</div>
+    <a href="#agents">Agent Team</a>
+    <a href="#stratalyst">STRATALYST</a>
+    <a href="#stratascout">STRATASCOUT</a>
+    <a href="#stratascout-detail">Scout — Design Detail</a>
+    <a href="#stratalink-detail">STRATALINK</a>
+    <a href="#stratagora">STRATAGORA</a>
+    <a href="#stratforge">STRATFORGE</a>
+    <a href="#stratmesh">STRATMESH</a>
+
+    <div class="nav-section">Operations</div>
+    <a href="#ssi-structure">SSI Business Structure</a>
+    <a href="#folder-sync">Folder Sync Rules</a>
+    <a href="#demo-gate">Session & Demo Gate</a>
+
+    <div class="nav-section">Reference</div>
+    <a href="#glossary">Glossary</a>
+    <a href="#api-routes">API Routes</a>
+    <a href="#file-map">File Map</a>
+  </nav>
+</aside>
+
+<!-- ── MAIN CONTENT ── -->
+<main class="main">
+
+  <!-- Search -->
+  <div class="search-bar">
+    <div class="search-wrap">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input id="search" type="text" placeholder="Search terms, thresholds, agent names, signal types…" autocomplete="off">
+      <span id="search-count"></span>
+    </div>
+  </div>
+
+  <div id="no-results">No matches. Try a different term.</div>
+
+  <!-- ════════════════════════════════════
+       INTELLIGENCE DEPTH
+  ════════════════════════════════════ -->
+  <section class="section" id="intelligence-depth" data-searchable>
+    <div class="section-title">Intelligence Depth</div>
+    <div class="section-sub">Knowledge Base scoring system — 0 to 100</div>
+
+    <p>Intelligence Depth is the score that measures how much actionable sales intelligence has been captured for a supplier in the Knowledge Base. It is not a simple word count — it rewards specific, verifiable content with domain vocabulary and measurable data points.</p>
+
+    <h3>Thresholds</h3>
+    <div class="threshold-row">
+      <span class="badge" style="background:#1c1400; color:#ef4444; border:1px solid #7f1d1d">
+        <span class="badge-dot" style="background:#ef4444"></span> INTELLIGENCE GAP — &lt;50
+      </span>
+      <span class="badge" style="background:#1c1400; color:#f59e0b; border:1px solid #92400e">
+        <span class="badge-dot" style="background:#f59e0b"></span> VALUE BRIEF READY — 50+
+      </span>
+      <span class="badge" style="background:#071a0e; color:#22c55e; border:1px solid #166534">
+        <span class="badge-dot" style="background:#22c55e"></span> PROPOSAL READY — 80+
+      </span>
+      <span class="badge" style="background:#0c1a2e; color:#3b82f6; border:1px solid #1e3a5f">
+        <span class="badge-dot" style="background:#3b82f6"></span> SINGULARITY READY — 90+
+      </span>
+    </div>
+
+    <div class="callout callout-gold">Field Intelligence requires a minimum Intelligence Depth of 50 to run. Below 50, the supplier profile is too thin to research prospects credibly.</div>
+
+    <h3>Scoring Elements &amp; Weights</h3>
+    <table>
+      <thead>
+        <tr><th>Element</th><th>Key</th><th>Max Weight</th><th>What earns points</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Product Catalogue</td>
+          <td class="key">product_catalogue</td>
+          <td class="weight">20 pts</td>
+          <td>Product series, models, variants, formats, capacities</td>
+        </tr>
+        <tr>
+          <td>Technical Datasheets</td>
+          <td class="key">technical_datasheets</td>
+          <td class="weight">15 pts</td>
+          <td>Temperatures, pressures, voltages, tolerances, IP ratings, dimensions</td>
+        </tr>
+        <tr>
+          <td>Case Studies</td>
+          <td class="key">case_studies</td>
+          <td class="weight">20 pts</td>
+          <td>Named customers, projects, challenges solved, measurable outcomes</td>
+        </tr>
+        <tr>
+          <td>Distribution Channels</td>
+          <td class="key">distribution_channels</td>
+          <td class="weight">12 pts</td>
+          <td>Retailers, resellers, private label use, volume pricing, channel names</td>
+        </tr>
+        <tr>
+          <td>Certifications</td>
+          <td class="key">certifications</td>
+          <td class="weight">10 pts</td>
+          <td>ISO, ATEX, CE, DNV, UL, FDA, REACH, RoHS, IECEx, NORSOK, API</td>
+        </tr>
+        <tr>
+          <td>Competitive Positioning</td>
+          <td class="key">competitive_positioning</td>
+          <td class="weight">10 pts</td>
+          <td>Named competitors, win/loss context, differentiators, market position</td>
+        </tr>
+        <tr>
+          <td>Reference Projects</td>
+          <td class="key">reference_projects</td>
+          <td class="weight">10 pts</td>
+          <td>Named sites, plant installations, commissioned projects, country/region</td>
+        </tr>
+        <tr>
+          <td>Pricing Framework</td>
+          <td class="key">pricing_framework</td>
+          <td class="weight">8 pts</td>
+          <td>Price points, MOQ, volume tiers, currency, contract structures</td>
+        </tr>
+        <tr>
+          <td>Objections &amp; Responses</td>
+          <td class="key">objections_responses</td>
+          <td class="weight">5 pts</td>
+          <td>FAQs, warranty terms, lead times, common sales objections</td>
+        </tr>
+        <tr style="background:#0f1623">
+          <td><strong>TOTAL</strong></td>
+          <td></td>
+          <td class="weight">100 pts</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Quality Scoring Formula (per element)</h3>
+    <p>Each element gets a <strong>quality ratio</strong> (0.0–1.0) multiplied by its max weight. The ratio is built from four components:</p>
+    <pre>quality_ratio = presence_tier + depth_bonus + key_term_score + specificity_score
+
+presence_tier   = 0.15 (text &lt;30 chars) → 0.30 → 0.45 → 0.50 (text &gt;300 chars)
+depth_bonus     = min(0.20, paragraph_count × 0.04)      — rewards accumulated sources
+key_term_score  = min(0.15, matching_domain_terms × 0.025)
+specificity     = min(0.15, regex_hits × 0.03)            — numbers, codes, measurements
+
+element_score   = quality_ratio × max_weight</pre>
+    <p><strong>Specificity patterns</strong> that add points: physical units (°C, bar, V, kW, mm, kg), certification codes (ISO 9001, ATEX II), model/part numbers, years, currencies (EUR, DKK, USD), decimal measurements.</p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       CONVERGENCE INDEX
+  ════════════════════════════════════ -->
+  <section class="section" id="convergence-index" data-searchable>
+    <div class="section-title">Convergence Index</div>
+    <div class="section-sub">Prospect alignment score — 0 to 100</div>
+
+    <p>The Convergence Index (CI) measures how well a specific prospect's world aligns with a supplier's capability. It is scored by Gemini during Field Intelligence research, incorporating both static intelligence (KB content) and live buying signals found during research.</p>
+
+    <h3>Output Paths by CI Score</h3>
+    <div class="threshold-row">
+      <span class="badge" style="background:#1c1400; color:#ef4444; border:1px solid #7f1d1d">
+        <span class="badge-dot" style="background:#ef4444"></span> PARK — &lt;60
+      </span>
+      <span class="badge" style="background:#1c1400; color:#f59e0b; border:1px solid #92400e">
+        <span class="badge-dot" style="background:#f59e0b"></span> FIRST SIGNAL — 60+
+      </span>
+      <span class="badge" style="background:#071a0e; color:#22c55e; border:1px solid #166534">
+        <span class="badge-dot" style="background:#22c55e"></span> MUTUAL VALUE BRIEF — 75+
+      </span>
+      <span class="badge" style="background:#0c1a2e; color:#3b82f6; border:1px solid #1e3a5f">
+        <span class="badge-dot" style="background:#3b82f6"></span> CONVERGENCE PROPOSAL — 90+
+      </span>
+    </div>
+
+    <h3>What raises the CI</h3>
+    <table>
+      <thead><tr><th>Factor</th><th>Impact</th></tr></thead>
+      <tbody>
+        <tr><td>Verified buying signal (TENDER, CAPEX)</td><td>+10 to +20 pts vs no signals</td></tr>
+        <tr><td>Identified decision maker with LinkedIn</td><td>+5 to +10 pts</td></tr>
+        <tr><td>Named operational facility or site match</td><td>+5 to +15 pts</td></tr>
+        <tr><td>Active project in relevant product category</td><td>+10 to +20 pts</td></tr>
+        <tr><td>Regulatory pressure creating obligation</td><td>+10 pts</td></tr>
+        <tr><td>Matching certifications (supplier ↔ buyer requirement)</td><td>+5 to +10 pts</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Honest Gate</h3>
+    <p>When CI &lt; 60, STRATAGENT auto-parks the opportunity and returns an <strong>Honest Gate</strong> message. It also queries Gemini to find 3 alternative prospects with higher estimated CI, and saves the parked position to Active Watch with a threshold trigger at CI 60.</p>
+
+    <div class="callout callout-amber">The CI is intentionally hard to inflate. A score of 62 means "approach is possible." A score of 91 means "approach now — the window is open."</div>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       BUYING SIGNALS
+  ════════════════════════════════════ -->
+  <section class="section" id="buying-signals" data-searchable>
+    <div class="section-title">Buying Signals</div>
+    <div class="section-sub">Live prospect events that create purchasing windows</div>
+
+    <p>Buying Signals are concrete, time-stamped events found during Field Intelligence research that indicate a prospect is likely to be in a purchasing window. Each signal has a type, strength rating, timing, and source. They are surfaced before the Relationship Profile in the results view and directly influence the Convergence Index.</p>
+
+    <h3>Signal Types</h3>
+    <div class="signal-grid">
+      <div class="signal-chip" style="background:#1e0a45; border:1px solid #4c1d9533">
+        <div class="type" style="color:#7c3aed">TENDER</div>
+        <div class="desc">Published tender notice or awarded contract in this product category. Highest-value signal — procurement cycle is live.</div>
+      </div>
+      <div class="signal-chip" style="background:#0c1a2e; border:1px solid #0ea5e933">
+        <div class="type" style="color:#0ea5e9">LEADERSHIP_CHANGE</div>
+        <div class="desc">New CPO, Head of Procurement, Plant Manager, Sustainability Director. New leaders review suppliers in first 90 days.</div>
+      </div>
+      <div class="signal-chip" style="background:#1c1400; border:1px solid #f59e0b33">
+        <div class="type" style="color:#f59e0b">CAPEX</div>
+        <div class="desc">Capital expenditure announcement — new facility, expansion, equipment investment. Creates a procurement event.</div>
+      </div>
+      <div class="signal-chip" style="background:#071a0e; border:1px solid #22c55e33">
+        <div class="type" style="color:#22c55e">BUDGET</div>
+        <div class="desc">Approved budget disclosure, fiscal year spending plan, investment round. Indicates funds are allocated.</div>
+      </div>
+      <div class="signal-chip" style="background:#031a10; border:1px solid #10b98133">
+        <div class="type" style="color:#10b981">SUSTAINABILITY</div>
+        <div class="desc">Decarbonisation commitment, ESG pledge, technology upgrade program. Drives procurement of compliant products.</div>
+      </div>
+      <div class="signal-chip" style="background:#1c0d00; border:1px solid #f9731633">
+        <div class="type" style="color:#f97316">STRATEGIC_SHIFT</div>
+        <div class="desc">M&amp;A activity, new market entry, operational restructuring. Changes the supply chain picture.</div>
+      </div>
+      <div class="signal-chip" style="background:#0f1623; border:1px solid #94a3b833">
+        <div class="type" style="color:#94a3b8">NEWS_EVENT</div>
+        <div class="desc">Regulatory change, supply chain disruption, certification requirement. Creates indirect demand.</div>
+      </div>
+      <div class="signal-chip" style="background:#1a0a2e; border:1px solid #a855f733">
+        <div class="type" style="color:#a855f7">SOCIAL_SIGNAL</div>
+        <div class="desc">Reddit threads, X posts, blog posts, or reviews where operators complain about the exact problem the supplier solves. Earliest-stage signal — pain before procurement intent has formed. A thread of 50 Airbnb hosts complaining about the same problem is a market signal, not just one lead.</div>
+      </div>
+    </div>
+
+    <h3>Signal Strength</h3>
+    <div class="threshold-row">
+      <span class="badge" style="background:#071a0e; color:#22c55e; border:1px solid #166534">
+        <span class="badge-dot" style="background:#22c55e"></span> HIGH — Verified, sourced, directly relevant
+      </span>
+      <span class="badge" style="background:#1c1400; color:#f59e0b; border:1px solid #92400e">
+        <span class="badge-dot" style="background:#f59e0b"></span> MEDIUM — Credible but indirect or inferred
+      </span>
+      <span class="badge" style="background:#0f1623; color:#64748b; border:1px solid #1e2530">
+        <span class="badge-dot" style="background:#64748b"></span> LOW — Weak or unverified indication
+      </span>
+    </div>
+
+    <h3>Approach Window</h3>
+    <p>Synthesised from all active signals, the Approach Window describes the optimal moment to make contact — e.g. <em>"Before Q2 budget freeze"</em> or <em>"While new CPO is still onboarding."</em> If no window is identifiable, this field returns null and is not shown.</p>
+
+    <h3>CI Impact Rule</h3>
+    <div class="callout callout-green">A verified HIGH-strength signal (TENDER or CAPEX) should add 10–20 points to the Convergence Index compared to an equivalent prospect with no signals. This is the logic that converts a 62 CI to a 91.</div>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       KNOWLEDGE BASE
+  ════════════════════════════════════ -->
+  <section class="section" id="knowledge-base" data-searchable>
+    <div class="section-title">Knowledge Base</div>
+    <div class="section-sub">Module 1 — Supplier intelligence repository</div>
+
+    <p>The Knowledge Base (KB) stores structured sales intelligence for each supplier Jason represents. Each supplier gets their own KB document in Firestore. The KB is the foundation that all other modules depend on.</p>
+
+    <h3>KB Creation Flow</h3>
+    <p>1. Enter company name + optional website URL → Gemini web research runs (30s) → structured profile created → Intelligence Depth scored → KB saved to Firestore.</p>
+    <p>2. After creation: enrich by adding PDFs via <strong>Upload Document</strong>, URLs via <strong>Add Web Source</strong>, or running <strong>STRATALYST</strong>.</p>
+
+    <h3>Gap List</h3>
+    <p>Elements below their score potential appear in the Gap List. Clicking a gap item scrolls to the Add Web Source panel, pre-fills a context note, and highlights the panel with a gold border — ready to receive the URL that will fill that gap.</p>
+
+    <h3>Add Web Source</h3>
+    <p>Fetches a URL, extracts structured intelligence from the page content, merges it into the existing profile, and rescores. Pass a <strong>focus element</strong> (which gap you're filling) and an optional <strong>context note</strong> to give Gemini a prioritisation hint.</p>
+
+    <h3>Product Images</h3>
+    <p>Images are uploaded per-supplier, tagged with <code>product_name</code>, <code>brand</code>, and comma-separated <code>tags</code>. Stored as base64 in the <code>product_images</code> Firestore collection. Searchable via <code>GET /knowledge-base/{id}/images/search?q=</code>. Used by the Output Engine to embed images in proposals. Max 5 MB per image.</p>
+
+    <h3>Folder Sync</h3>
+    <p>See <a href="#folder-sync" style="color:var(--gold)">Folder Sync Rules</a>. Once synced, subfolders are routed to specific KB elements: <code>Case Studies/</code> → <code>case_studies</code>, <code>Product/</code> → <code>product_catalogue</code>, <code>Certifications/</code> → <code>certifications</code>, <code>Campaigns/</code> → <code>competitive_positioning</code>, <code>Markets/</code> → <code>operational_context</code>.</p>
+
+    <h3>Editable Website URL</h3>
+    <p>The website URL on a KB can be edited directly in the supplier view — click the ✎ pencil icon next to the URL, type the correction, and press Enter or Save. Works on all KBs including those with no URL set yet. Endpoint: <code>PATCH /knowledge-base/{id}/update-url</code>.</p>
+
+    <h3>Multi-Product Suppliers (STRATATIV3D pattern)</h3>
+    <p>When a KB represents Jason's own product line rather than a third-party supplier, it operates at two layers:</p>
+
+    <div class="card">
+      <div class="card-title">Layer 1 — KB Profile (brand layer)</div>
+      <div class="card-desc">The 9-element profile covers the brand as a whole — manufacturing capability, positioning, certifications, buyer profiles. This is the sales pitch for the brand, not any individual product. Example: STRATATIV3D's KB profile describes its 3D printing / additive manufacturing capability and the type of buyer it appeals to.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Layer 2 — Product Library (product layer)</div>
+      <div class="card-desc">Individual products live in the Product Images section, each tagged with <code>product_name</code>, <code>brand</code>, and keyword <code>tags</code>. Example: Ungunk is registered as <code>product_name: Ungunk, brand: STRATATIV3D, tags: charger guard, bathroom, airbnb, electric toothbrush, monthly replacement</code>. The Output Engine can query by tag to pull the right product into a proposal.</div>
+    </div>
+
+    <div class="callout callout-amber">All KB suppliers use the same 9-element structure. A multi-product supplier does not have more categories — it may appear to have more gaps because the brand site is minimal or pre-launch, leaving most elements unfilled.</div>
+
+    <h3>Product Sub-KB (planned evolution)</h3>
+    <p>As STRATATIV3D's product line grows, the correct long-term structure is a <strong>product sub-KB</strong> per product — each product (Ungunk, future products) gets its own KB with its own Intelligence Depth score, pricing framework, case studies, and buyer profile. STRATATIV3D becomes the parent brand; products are children.</p>
+    <p>This is not yet built. Until it is: KB profile = brand intelligence, Product Library = individual product entries.</p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       FIELD INTELLIGENCE
+  ════════════════════════════════════ -->
+  <section class="section" id="field-intelligence" data-searchable>
+    <div class="section-title">Field Intelligence</div>
+    <div class="section-sub">Module 2 — Prospect research and Convergence Index</div>
+
+    <p>Field Intelligence researches a prospect company against a selected supplier's KB. It produces a Relationship Profile, a Convergence Index score, and a set of Buying Signals — then recommends an output path or auto-parks the opportunity.</p>
+
+    <h3>Prerequisites</h3>
+    <p>The selected supplier must have an Intelligence Depth of <strong>50 or above</strong>. Below 50, the button is disabled and a warning is shown.</p>
+
+    <h3>Research Flow</h3>
+    <p>1. Select supplier → enter prospect company name → Run Field Intelligence → Gemini web research (grounded) → Relationship Profile + Buying Signals returned → CI scored → result displayed.</p>
+    <p>2. If CI &ge; 60: contextual output banner appears inline. If CI &lt; 60: Honest Gate + 3 better alternatives + Park in Watch option.</p>
+    <p><strong>Result persistence:</strong> The most recent result per supplier is restored when you navigate back to FI. "+ New Research" button clears it to start fresh.</p>
+
+    <h3>Signal Recency — CRITICAL DESIGN PRINCIPLE</h3>
+    <div class="callout callout-gold">
+      The research agent knows today's date. Signals older than 18 months are <strong>excluded from active buying signals</strong> and moved to the Historical Record. An approach window that has already closed is cleared entirely. The Convergence Index only reflects current intelligence — a 2023 acquisition does not drive a 2026 contact recommendation.
+    </div>
+    <table>
+      <thead><tr><th>Signal age</th><th>Treatment</th><th>Drives CI?</th></tr></thead>
+      <tbody>
+        <tr><td>Under 18 months</td><td>Active Buying Signal — displayed in full colour</td><td>Yes</td></tr>
+        <tr><td>Over 18 months</td><td>Historical Record — preserved as context, greyed out, collapsed</td><td>No</td></tr>
+        <tr><td>No date found</td><td>Treated as recent (included)</td><td>Yes</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Historical Record Panel</h3>
+    <p>Collapsed section in FI results labelled "Historical Record — N past signals." Expand to see all signals older than 18 months. Each shows type badge, timing, and signal description at 60% opacity. Useful for understanding the company's story over time — e.g. an acquisition two years ago explains current capacity and growth trajectory. Never drives an Approach Window or CI score.</p>
+
+    <h3>Inline Output Generation</h3>
+    <p>When CI &ge; 60, a gold action banner appears directly below the Convergence Index dial — no navigation to the Output Engine required. Label and content adapt to CI:</p>
+    <table>
+      <thead><tr><th>CI range</th><th>Banner label</th><th>Generated documents</th></tr></thead>
+      <tbody>
+        <tr><td>60–74</td><td>FIRST SIGNAL ready</td><td>Insight email (under 150 words) — opens the door without walking through it</td></tr>
+        <tr><td>75–89</td><td>MUTUAL VALUE BRIEF ready</td><td>Email + value brief + 5 qualifying questions for the first call</td></tr>
+        <tr><td>90+</td><td>CONVERGENCE PROPOSAL ready</td><td>Email + full technical proposal + engagement brief / RFQ framework</td></tr>
+      </tbody>
+    </table>
+    <p>All outputs render inline as select-all text blocks (copy straight out). Regenerate button for a second pass. SSI contact footer appended to all client-facing documents automatically.</p>
+
+    <h3>Relationship Profile Fields</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>Company Overview</td><td>Verified description of what the company makes/operates</td></tr>
+        <tr><td>Operational Context</td><td>Where the supplier's products would apply in their operations</td></tr>
+        <tr><td>Buying Trigger</td><td>Primary synthesised reason they need this now</td></tr>
+        <tr><td>Active Projects</td><td>Tenders, capex, expansions found during research</td></tr>
+        <tr><td>Current Suppliers</td><td>Known suppliers in this product category</td></tr>
+        <tr><td>Recent News</td><td>Relevant recent developments (within signal cutoff only)</td></tr>
+        <tr><td>Decision Maker</td><td>Name, title, LinkedIn URL, confidence level</td></tr>
+        <tr><td>Confidence Notes</td><td>What was found vs inferred — Gemini's own assessment of data quality</td></tr>
+        <tr><td>Historical Signals</td><td>Signals older than 18 months — background context only, not displayed in active panel</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Buyer Type Awareness</h3>
+    <p>The research agent is instructed that <strong>industrial insulation contractors and installers are direct buyers</strong> of insulation materials — not intermediaries. Companies described as "entreprenørfirma," "installatør," or "insulation contractor" receive a minimum CI of 65–80 when researched against an insulation supplier. This prevents the agent from penalising alignment for the most important buyer type in the industrial insulation market.</p>
+
+    <h3>Park Logic</h3>
+    <p>When CI &lt; 60, an Honest Gate message is shown with 3 better-matched alternatives. A "Park in Watch" button saves the prospect to Active Watch with a threshold trigger at CI 60. No auto-park — Jason decides.</p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       ACTIVE WATCH
+  ════════════════════════════════════ -->
+  <section class="section" id="active-watch" data-searchable>
+    <div class="section-title">Active Watch</div>
+    <div class="section-sub">Module 3 — Parked opportunities with trigger conditions</div>
+
+    <p>Active Watch stores prospects that are not yet ready for an approach. Each monitored position has a trigger condition — when met, the position surfaces for re-evaluation.</p>
+
+    <h3>Trigger Types</h3>
+    <table>
+      <thead><tr><th>Type</th><th>Fires when</th></tr></thead>
+      <tbody>
+        <tr><td>threshold</td><td>CI reaches a specified score (default: 60)</td></tr>
+        <tr><td>time</td><td>A date is reached — e.g. next fiscal year, post-announcement</td></tr>
+        <tr><td>document</td><td>A specific document or tender is published</td></tr>
+        <tr><td>event</td><td>A named event occurs — leadership change, project award</td></tr>
+      </tbody>
+    </table>
+
+    <h3>STRATADAR Integration</h3>
+    <p>Active Watch is now operated by <strong>STRATADAR</strong> — the cross-supplier intelligence monitor. The Active Watch page shows a STRATADAR dashboard with priority-scored positions, urgency labels, age indicators, and cross-supplier scan capability. See the <a href="#stratadar">STRATADAR agent card</a> for full detail.</p>
+
+    <h3>Promote to Field Intelligence</h3>
+    <p>Any watched position can be promoted directly to FI with one click. The promote action navigates to Field Intelligence with the supplier and company name pre-filled via router state — ready to run research immediately. The position is removed from Active Watch on promote.</p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       OUTPUT ENGINE
+  ════════════════════════════════════ -->
+  <section class="section" id="output-engine" data-searchable>
+    <div class="section-title">Output Engine</div>
+    <div class="section-sub">Module 4 — Proposal and brief generation at CI thresholds</div>
+
+    <p>The Output Engine generates graduated sales documents from a Relationship Profile when the CI is high enough. As of the current build, output is generated <strong>inline within Field Intelligence</strong> — no separate navigation required. The Output Engine backend remains available as a standalone module at <code>/output</code> for future use cases (batch generation, integration with other tools). All outputs are appended with Jason's SSI contact footer.</p>
+
+    <p><strong>Endpoint:</strong> <code>POST /api/output/generate</code> — accepts <code>profile_id</code>, automatically selects the correct path based on stored CI, returns structured JSON with email + path-specific documents.</p>
+
+    <h3>Output Paths</h3>
+    <div class="card">
+      <div class="card-title" style="color:#3b82f6">Path A — CONVERGENCE PROPOSAL (CI ≥ 90)</div>
+      <div class="card-desc">Full proposal. Supplier capability matched to named prospect need. Decision maker addressed. Specific project referenced. All buying signals incorporated.</div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:#22c55e">Path B — MUTUAL VALUE BRIEF (CI ≥ 75)</div>
+      <div class="card-desc">Two-page value brief. Establishes shared interest without a hard pitch. Opens the conversation. Good for prospects where full intelligence is partial.</div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:#f59e0b">Path C — FIRST SIGNAL (CI ≥ 60)</div>
+      <div class="card-desc">Short introductory message. Establishes presence. No detailed capability claim. References one specific thing found in research to prove relevance.</div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:#ef4444">PARK (CI &lt; 60)</div>
+      <div class="card-desc">No output generated. Auto-parked to Active Watch. Honest Gate message shown. Three better alternatives suggested.</div>
+    </div>
+
+    <h3>SSI Footer</h3>
+    <p>All outputs append: <strong>Jason L. Smith</strong> | Strategic Sales International ApS | jls@strategic.dk | +45 24 99 23 93 | www.strategic-dk.com</p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       AGENT TEAM
+  ════════════════════════════════════ -->
+  <section class="section" id="agents" data-searchable>
+    <div class="section-title">Agent Team</div>
+    <div class="section-sub">Supreme sales, marketing, research and promotion partners</div>
+
+    <p>The STRATAGENT agent team is designed around a single principle: <strong>capability-first intelligence</strong>. The question is never "what do I know about this company" — it is "given everything I can do, what does the world need that I haven't found yet." Every KB depth point added to a supplier expands the surface area the agents can match against. The richer the capability map, the more precise and surprising the opportunities they surface.</p>
+
+    <p>Agents operate in two orientations: <strong>reactive</strong> (you ask, they research) and <strong>proactive</strong> (they monitor, discover, and surface without being asked). The long-term vision is a fully proactive team — opportunities arrive without Jason naming them.</p>
+
+    <div class="callout callout-gold">Geography parameter is a first-class control on all discovery agents. Rather than searching globally and generating unmanageable data volume, each hunt is scoped to a geography zone: Denmark → Scandinavia → Europe → Global. Start narrow, expand when the pipeline warrants it.</div>
+
+    <h3>Build Status Overview</h3>
+    <table>
+      <thead><tr><th>Agent</th><th>Role</th><th>Status</th><th>Faces client?</th></tr></thead>
+      <tbody>
+        <tr><td><strong>STRATALYST</strong></td><td>KB enrichment</td><td style="color:#22c55e">✅ Built</td><td>No</td></tr>
+        <tr><td><strong>STRATASCOUT</strong></td><td>Prospect hunter</td><td style="color:#22c55e">✅ Built</td><td>Yes — sub-brand logo</td></tr>
+        <tr><td><strong>STRATALINK</strong></td><td>Affiliate intelligence &amp; revenue</td><td style="color:#22c55e">✅ Built</td><td>Yes</td></tr>
+        <tr><td><strong>STRATADAR</strong></td><td>Active Watch monitor</td><td style="color:#22c55e">✅ Built</td><td>No — internal</td></tr>
+        <tr><td><strong>STRATEGIST</strong></td><td>Monday Brief + pipeline advisor</td><td style="color:#22c55e">✅ Built</td><td>Yes — /strategist</td></tr>
+        <tr><td><strong>STRATAGORA</strong></td><td>Market intelligence layer</td><td style="color:#64748b">🔲 Planned</td><td>No — feeds other agents</td></tr>
+        <tr><td><strong>STRATFORGE</strong></td><td>Product/service ideation</td><td style="color:#64748b">🔲 Planned</td><td>Yes</td></tr>
+        <tr><td><strong>STRATMESH</strong></td><td>Relationship &amp; network intelligence</td><td style="color:#64748b">🔲 Planned</td><td>No — feeds STRATEGIST</td></tr>
+      </tbody>
+    </table>
+
+    <!-- STRATALYST -->
+    <div class="agent-card" id="stratalyst">
+      <div class="agent-avatar" style="background:#1c1400; border:1px solid var(--gold-dim)">🔬</div>
+      <div>
+        <div class="agent-name">STRATALYST</div>
+        <span class="agent-status" style="background:#071a0e; color:#22c55e; border:1px solid #166534">✅ BUILT</span>
+        <div class="agent-desc">
+          KB enrichment agent. Analyses Intelligence Depth gaps, searches the web for gap-filling sources (17 source types), returns a findings brief with estimated depth gain per source. Jason reviews and approves — sources are ingested and KB is re-scored.<br><br>
+          <strong>Config:</strong> <code>backend/stratalyst_config.py</code> — 17 source types, 13 gap directives.<br>
+          <strong>Endpoints:</strong> <code>POST /api/stratalyst/research-gaps</code> · <code>POST /api/stratalyst/approve-sources</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATASCOUT -->
+    <div class="agent-card" id="stratascout">
+      <div class="agent-avatar" style="background:#0c1a2e; border:1px solid #1e3a5f">🎯</div>
+      <div>
+        <div class="agent-name">STRATASCOUT</div>
+        <span class="agent-status" style="background:#0c1a2e; color:#3b82f6; border:1px solid #1e3a5f">🔨 BUILDING</span>
+        <div class="agent-desc">
+          Proactive prospect hunter. Given a supplier KB and a geography zone, STRATASCOUT finds companies that match the capability profile AND show active buying signals — without Jason naming any prospect. Deposits candidates into the <strong>Prospect Pool</strong> with discovery context, matched capability, and estimated CI.<br><br>
+          <strong>Geography parameter:</strong> Denmark → Scandinavia → Northern Europe → Europe → Global. Controls data volume and keeps the pipeline manageable. Always start narrow.<br><br>
+          <strong>Hunt logic:</strong> Reads selected KB capability profile → searches within geography zone for companies with operational need matching that capability → scores each for buying signal presence → deposits to Prospect Pool. Jason reviews each candidate and promotes to Field Intelligence (which runs full research and CI scoring) or dismisses.<br><br>
+          <strong>Prospect Pool status flow:</strong> <code>new</code> → <code>reviewed</code> → <code>promoted</code> (triggers FI) or <code>dismissed</code><br><br>
+          <strong>Firestore collection:</strong> <code>prospect_pool</code><br>
+          <strong>Endpoints:</strong> <code>POST /api/stratascout/hunt</code> · <code>GET /api/stratascout/pool</code> · <code>POST /api/stratascout/pool/{id}/promote</code> · <code>POST /api/stratascout/pool/{id}/dismiss</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATADAR -->
+    <div class="agent-card" id="stratadar">
+      <div class="agent-avatar" style="background:#0c1a2e; border:1px solid #1e3a5f">📡</div>
+      <div>
+        <div class="agent-name">STRATADAR</div>
+        <span class="agent-status" style="background:#071a0e; color:#22c55e; border:1px solid #166534">✅ BUILT</span>
+        <div class="agent-desc">
+          Active Watch intelligence monitor. Internal agent — never faces clients, no sub-brand logo. STRATADAR is the operator that manages the parked prospect queue, runs cross-supplier scans, and decides which positions deserve promotion to Field Intelligence.<br><br>
+
+          <strong>What it does:</strong> Reads all parked positions across every supplier KB simultaneously. Calls Gemini to scan for trigger events — tenders published, leadership changes, capex confirmed, sustainability mandates, strategic shifts. Scores each position by priority and urgency, then presents a ranked dashboard.<br><br>
+
+          <strong>Priority scoring:</strong>
+          <ul>
+            <li>Surfaced (trigger detected): 100</li>
+            <li>Time-based trigger due: 80</li>
+            <li>Event-based trigger: 60</li>
+            <li>Threshold trigger: 40</li>
+            <li>Time pending: 20</li>
+          </ul>
+
+          <strong>Position age indicator:</strong> Green dot &lt;14 days · Amber 14–30 days · Red &gt;30 days<br><br>
+
+          <strong>UI — Active Watch page:</strong> STRATADAR badge header · 3-stat bar (Watching / Surfaced / Promoted) · Position cards with trigger type badge, age dot, urgency label, expandable detail · Promote to FI (pre-fills supplier + company) · Dismiss · Show/hide dismissed toggle · Cross-supplier STRATADAR SCAN button<br><br>
+
+          <strong>Promote flow:</strong> Clicking Promote navigates to Field Intelligence with <code>location.state</code> pre-loaded — supplier and company name are auto-filled, ready to run research immediately.<br><br>
+
+          <strong>Files:</strong> <code>backend/agents/stratadar_agent.py</code> · <code>backend/routers/active_watch.py</code> · <code>frontend/src/pages/ActiveWatch.tsx</code><br>
+          <strong>Endpoints:</strong> <code>GET /api/active-watch/all</code> · <code>POST /api/active-watch/scan-all</code> · <code>POST /api/active-watch/{id}/promote</code> · <code>POST /api/active-watch/{id}/dismiss</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATEGIST -->
+    <div class="agent-card" id="strategist">
+      <div class="agent-avatar" style="background:#1c1400; border:1px solid var(--gold-dim)">🧠</div>
+      <div>
+        <div class="agent-name">STRATEGIST</div>
+        <span class="agent-status" style="background:#071a0e; color:#22c55e; border:1px solid #166534">✅ BUILT</span>
+        <div class="agent-desc">
+          Cross-pipeline AI advisor. Available at <code>/strategist</code>. Reads all modules in a single pass — KB depths, CI scores, Active Watch positions, Prospect Pool candidates, Outcome Memory — and answers three questions: <em>Who should I call?</em> · <em>What changed?</em> · <em>Are we on target?</em><br><br>
+
+          <strong>Two modes:</strong><br>
+          <em>Pipeline Snapshot</em> — instant, no AI call. Shows live counts: KBs, active prospects, watched positions, outcome records. Fast status check.<br>
+          <em>Generate Brief</em> — full Gemini call. Aggregates all data and returns a structured strategic brief.<br><br>
+
+          <strong>Brief structure:</strong>
+          <ul>
+            <li><strong>Week Headline</strong> — one sentence on the state of the pipeline</li>
+            <li><strong>Pipeline Score</strong> (0–100) — weighted health score across all active prospects + KB depth, with reasoning</li>
+            <li><strong>Top 3 Actions</strong> — highest-leverage moves this week, each with module badge (KB / FI / WATCH / SCOUT / OUTPUT), effort rating (HIGH / MEDIUM / LOW), and a Go button that navigates directly to that module</li>
+            <li><strong>Who to Call</strong> — ranked prospect list with CI, urgency, and a crafted opening line for each</li>
+            <li><strong>What Changed</strong> — delta from last week: new profiles, CI movements, triggered watches</li>
+            <li><strong>Watch Alerts</strong> — positions STRATADAR has flagged as surfaced</li>
+            <li><strong>KB Health</strong> — strongest and weakest KBs, and which to fix first to unlock the most pipeline</li>
+          </ul>
+
+          <strong>Files:</strong> <code>backend/agents/strategist_agent.py</code> · <code>backend/routers/strategist.py</code> · <code>frontend/src/pages/Strategist.tsx</code><br>
+          <strong>Endpoints:</strong> <code>GET /api/strategist/pipeline-snapshot</code> · <code>POST /api/strategist/brief</code><br><br>
+
+          <strong>Future enhancement:</strong> When STRATAGORA is feeding sector-level signals, STRATEGIST upgrades from weekly summary to a continuous strategic advisor — surfacing category-level opportunities opening over the next quarter, and directing KB enrichment effort toward the suppliers whose depth increase would unlock the most pipeline.
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATAGORA -->
+    <div class="agent-card" id="stratagora">
+      <div class="agent-avatar" style="background:#031a10; border:1px solid #10b98133">🌐</div>
+      <div>
+        <div class="agent-name">STRATAGORA</div>
+        <span class="agent-status" style="background:#0f1623; color:#64748b; border:1px solid #1e2530">🔲 PLANNED</span>
+        <div class="agent-desc">
+          Market intelligence layer — the weather system the other agents operate inside. Named after the Greek agora (marketplace of ideas). Does not research specific prospects. Monitors the broader environment continuously: regulatory changes, industry trend reports, technology shifts, sustainability mandates, trade publications, standards body announcements, government policy pipelines.<br><br>
+          <strong>Feeds into:</strong> STRATADAR (market signals that activate watched prospects) · STRATEGIST (sector-level opportunity forecasting) · STRATASCOUT (new geography/sector targeting signals) · STRATFORGE (product ideation triggers)<br><br>
+          <strong>Key signal types it monitors:</strong> EU and national regulatory pipeline (12–24 month lead time is the window) · Industry certification requirement changes · Technology inflection points · Sustainability mandates by sector · Trade publication trend signals · Standards body announcements
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATFORGE -->
+    <div class="agent-card" id="stratforge">
+      <div class="agent-avatar" style="background:#1c0d00; border:1px solid #f9731633">⚗️</div>
+      <div>
+        <div class="agent-name">STRATFORGE</div>
+        <span class="agent-status" style="background:#0f1623; color:#64748b; border:1px solid #1e2530">🔲 PLANNED</span>
+        <div class="agent-desc">
+          Product and service ideation agent. Takes supplier capabilities (from KBs) and runs them against market signals (from STRATAGORA) looking for unmet needs the partners could fill. Output is a <strong>product brief</strong> — not a finished product, but a bet worth evaluating: estimated market size, production feasibility given current capability, and target buyer profile.<br><br>
+          <strong>Logic:</strong> STRATATIV3D can 3D print small precision parts at low volume → what problems in what markets involve small precision parts nobody has solved well → generate brief with market sizing and buyer profile. Ungunk was one such bet. STRATFORGE finds the next ones.<br><br>
+          <strong>Requires:</strong> Rich KB depth across all suppliers (80+) to produce high-quality ideation. The deeper the capability map, the more specific and surprising the output.
+        </div>
+      </div>
+    </div>
+
+    <!-- STRATMESH -->
+    <div class="agent-card" id="stratmesh">
+      <div class="agent-avatar" style="background:#1e0a45; border:1px solid #7c3aed33">🕸️</div>
+      <div>
+        <div class="agent-name">STRATMESH</div>
+        <span class="agent-status" style="background:#0f1623; color:#64748b; border:1px solid #1e2530">🔲 PLANNED</span>
+        <div class="agent-desc">
+          Relationship and network intelligence agent. Tracks the human layer around prospects: decision maker career moves, LinkedIn activity, conference speaker lists, industry association memberships. Hunts warm entry points — the moment a contact Jason has interacted with takes a new CPO role at a company in the watch list, STRATMESH surfaces it before it would be noticed organically.<br><br>
+          <strong>Also maps:</strong> Supplier contact networks (who do Jason's supplier contacts know, and where does that overlap with the prospect landscape) · Industry association cross-membership · Conference attendance patterns<br><br>
+          <strong>Feeds into:</strong> STRATEGIST (warm entry recommendations) · STRATASCOUT (relationship-qualified lead discovery)
+        </div>
+      </div>
+    </div>
+
+    <h3>Agent Build Order</h3>
+    <table>
+      <thead><tr><th>#</th><th>Agent</th><th>Status</th><th>Why this order</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><strong>STRATASCOUT</strong></td><td style="color:#22c55e">✅ Built</td><td>Closes the most obvious gap — proactive discovery. Makes the app feel agentic immediately.</td></tr>
+        <tr><td>2</td><td><strong>STRATADAR</strong></td><td style="color:#22c55e">✅ Built</td><td>Active Watch intelligence layer. Cross-supplier scanning, priority scoring, promote-to-FI flow.</td></tr>
+        <tr><td>3</td><td><strong>STRATEGIST</strong></td><td style="color:#22c55e">✅ Built</td><td>Cross-pipeline advisor. Monday Brief, Top 3 Actions, Pipeline Score, KB Health.</td></tr>
+        <tr><td>4</td><td><strong>STRATAGORA</strong></td><td style="color:#64748b">🔲 Next</td><td>Lightweight signal monitor, but feeds everything else. Makes STRATADAR dramatically smarter.</td></tr>
+        <tr><td>3</td><td><strong>STRATEGIST upgrade</strong></td><td>Once STRATAGORA feeds it, the Monday Brief becomes genuinely strategic not just a summary.</td></tr>
+        <tr><td>4</td><td><strong>STRATFORGE</strong></td><td>Needs rich KB data to produce quality output. Build after all supplier KBs reach 80+ depth.</td></tr>
+        <tr><td>5</td><td><strong>STRATMESH</strong></td><td>Most dependent on accumulated interaction data. Most powerful once the pipeline has history.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ════════════════════════════════════
+       STRATASCOUT DETAIL
+  ════════════════════════════════════ -->
+  <section class="section" id="stratascout-detail" data-searchable>
+    <div class="section-title">STRATASCOUT — Design Detail</div>
+    <div class="section-sub">Proactive prospect hunter — geography-scoped, capability-matched</div>
+
+    <h3>Geography Zones</h3>
+    <p>Geography is a mandatory parameter on every hunt. It limits data volume and keeps the pipeline manageable. The principle: start narrow, expand when the pipeline warrants it.</p>
+    <table>
+      <thead><tr><th>Zone</th><th>Scope</th><th>When to use</th></tr></thead>
+      <tbody>
+        <tr><td>🇩🇰 Denmark</td><td>Denmark only</td><td>First hunts, testing a new supplier capability, very targeted campaigns</td></tr>
+        <tr><td>🌍 Scandinavia</td><td>DK, SE, NO, FI</td><td>Default starting zone for most supplier hunts</td></tr>
+        <tr><td>🌍 Northern Europe</td><td>Scandinavia + DE, NL, BE, UK, IE</td><td>When Scandinavian pool is saturated or supplier has broader reach</td></tr>
+        <tr><td>🌍 Europe</td><td>Full EU + UK, NO, CH</td><td>High-value suppliers with pan-European capability and certification</td></tr>
+        <tr><td>🌐 Global</td><td>No restriction</td><td>Only for MissBlue private label, STRATATIV3D retail plays, or explicit global campaigns</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Hunt Logic</h3>
+    <p>Each hunt run takes: selected supplier KB + geography zone + optional sector focus. Gemini (with grounding) searches within those constraints for companies that:</p>
+    <table>
+      <thead><tr><th>Criterion</th><th>Why it matters</th></tr></thead>
+      <tbody>
+        <tr><td>Operational need matching KB capability</td><td>Core relevance — the company must plausibly need what the supplier provides</td></tr>
+        <tr><td>Active buying signal present</td><td>Not just a potential buyer — a buyer in motion right now</td></tr>
+        <tr><td>Accessible decision maker</td><td>No point finding a company if there's no door to knock on</td></tr>
+        <tr><td>Within geography zone</td><td>Data volume control + realistic sales reach</td></tr>
+        <tr><td>Recent signal only (current year or prior year)</td><td>Old announcements are not actionable. Every signal must be dated within the last 18 months.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Signal Sources Searched</h3>
+    <p>STRATASCOUT searches across two tiers of sources:</p>
+    <div class="card">
+      <div class="card-title">Formal sources (high confidence)</div>
+      <div class="card-desc">Published tenders and procurement notices · CapEx and investment announcements · Leadership appointment news · Regulatory compliance deadlines · Strategic press releases</div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:#a855f7">Social &amp; community sources (early-stage, high value)</div>
+      <div class="card-desc">Reddit threads where operators describe problems the supplier solves · X (Twitter) posts from sector operators describing frustrations · Blog posts and industry articles naming pain points · Review sites where customers flag gaps · LinkedIn posts from procurement or operations heads. These are the earliest signals — pain before procurement intent has formed. A Reddit thread of 50 Airbnb hosts with the same complaint is a market signal, not just one lead.</div>
+    </div>
+    <div class="callout callout-gold">Sector Focus is a hard constraint, not a hint. "Airbnb Superhost operators" restricts the entire hunt to multi-property STR hosts and property management companies. STRATASCOUT will return fewer candidates rather than pad with off-sector results.</div>
+
+    <h3>Prospect Pool</h3>
+    <p>All STRATASCOUT discoveries deposit to <code>prospect_pool</code> in Firestore. Each record carries:</p>
+    <table>
+      <thead><tr><th>Field</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>company_name</td><td>Found company</td></tr>
+        <tr><td>country</td><td>Country within the geography zone</td></tr>
+        <tr><td>matched_supplier_id</td><td>Which KB capability triggered this match</td></tr>
+        <tr><td>discovery_signal</td><td>What specific signal was found (tender, capex, etc.)</td></tr>
+        <tr><td>discovery_reason</td><td>Plain English: why this company was surfaced</td></tr>
+        <tr><td>estimated_ci</td><td>Pre-research CI estimate (0–100) — rough, before full FI runs</td></tr>
+        <tr><td>status</td><td><code>new</code> → <code>reviewed</code> → <code>promoted</code> or <code>dismissed</code></td></tr>
+        <tr><td>discovered_at</td><td>Timestamp</td></tr>
+      </tbody>
+    </table>
+
+    <h3>From Pool to Pipeline</h3>
+    <p><strong>Promote</strong> → runs full Field Intelligence on the prospect (costs 1 action, produces full Relationship Profile + CI + Buying Signals). <strong>Dismiss</strong> → removed from active pool, logged for pattern learning. <strong>Park</strong> → moves to Active Watch with a trigger condition without running full FI yet.</p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       SSI BUSINESS STRUCTURE
+  ════════════════════════════════════ -->
+  <section class="section" id="ssi-structure" data-searchable>
+    <div class="section-title">SSI Business Structure</div>
+    <div class="section-sub">Three KB identities — keep separate in all sales conversations</div>
+
+    <table>
+      <thead><tr><th>Identity</th><th>KB Name</th><th>What it is</th><th>Use when</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>SSI Consult</strong></td>
+          <td><code>SSI Consult</code></td>
+          <td>Jason's consulting and B2B advisory practice. Strategic Sales International ApS.</td>
+          <td>Selling consulting services, advisory engagements, business development.</td>
+        </tr>
+        <tr>
+          <td><strong>STRATATIV3D</strong></td>
+          <td><code>STRATATIV3D</code></td>
+          <td>Product development arm. 3D printing / additive manufacturing. First product: Ungunk (monthly electric toothbrush stand charger guard).</td>
+          <td>Selling Ungunk, pitch to retailers/Airbnb hosts for bathroom products, private label discussions.</td>
+        </tr>
+        <tr>
+          <td><strong>MissBlue</strong></td>
+          <td><code>MissBlue</code></td>
+          <td>Third-party supplier Jason represents. Biodegradable tea and coffee filters (100-pack). Manufactured by Inno-Tek DK. Private-labelable.</td>
+          <td>Selling to hospitality, short-term rentals, retailers, coffee/tea specialty. Do not mix with SSI Consult.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Key Buyer Profile — Airbnb Superhosts</h3>
+    <p>Multi-property short-term rental operators are a <strong>convergent buyer</strong> for two products simultaneously:</p>
+    <div class="card">
+      <div class="card-title">MissBlue + Ungunk — Single Sales Conversation</div>
+      <div class="card-desc">Both are monthly-replacement, eco-positioned, and private-labelable. Strong convergence for Airbnb Superhosts who care about guest experience and bathroom maintenance between guests. One outreach, two products.</div>
+    </div>
+
+    <h3>MissBlue Distribution Channel Intel (verified 2026-06-04)</h3>
+    <table>
+      <thead><tr><th>Vendor</th><th>Brand Used</th><th>Price / 100 pcs</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>MissBlue direct</td><td>MissBlue</td><td>55 DKK</td><td>missblue.dk</td></tr>
+        <tr><td>Risteriet</td><td>Mister Brew (private label)</td><td>55 DKK</td><td>Coffee specialty</td></tr>
+        <tr><td>Origreen</td><td>Te- &amp; Kaffefilter (private label)</td><td>60 DKK</td><td>Also 500 + 1000 pcs</td></tr>
+        <tr><td>Kimber Foods</td><td>Tefilter til tekruset (private label)</td><td>47–79 DKK</td><td>On sale</td></tr>
+        <tr><td>Lomax</td><td>Miss Blue (brand kept)</td><td>62.44 DKK</td><td>Volume: 56.19 @ 15pk / 49.94 @ carton</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       FOLDER SYNC
+  ════════════════════════════════════ -->
+  <section class="section" id="folder-sync" data-searchable>
+    <div class="section-title">Folder Sync</div>
+    <div class="section-sub">Local file-to-KB ingestion system</div>
+
+    <div class="callout callout-gold">
+      <strong>Critical naming rule:</strong> The local folder name MUST exactly match the KB company name. e.g. KB = "TG Technology" → folder must be <code>Suppliers/TG Technology/</code>
+    </div>
+
+    <h3>Root Paths</h3>
+    <p>Auto-resolved from the backend directory. Configured in <code>config.py</code> as <code>LOCAL_SUPPLIERS_ROOT</code> and <code>LOCAL_PRODUCTS_ROOT</code>.</p>
+
+    <h3>Subfolder Routing</h3>
+    <table>
+      <thead><tr><th>Subfolder name</th><th>Routes to KB element</th></tr></thead>
+      <tbody>
+        <tr><td><code>Case Studies/</code></td><td>case_studies</td></tr>
+        <tr><td><code>Certifications/</code></td><td>certifications</td></tr>
+        <tr><td><code>Product/</code></td><td>product_catalogue</td></tr>
+        <tr><td><code>Campaigns/</code></td><td>competitive_positioning</td></tr>
+        <tr><td><code>Markets/</code></td><td>operational_context</td></tr>
+        <tr><td><code>Prospects/</code></td><td>⛔ Skipped (not ingested)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Endpoints</h3>
+    <p><code>GET /api/folder-sync/discover</code> — finds Suppliers/ and Products/ folders with no matching KB (shows as green banner in KB list view).</p>
+    <p><code>POST /api/folder-sync/{id}/sync</code> — scans the matching folder, ingests new PDFs and images, routes by subfolder, rescores Intelligence Depth.</p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       SESSION & DEMO GATE
+  ════════════════════════════════════ -->
+  <section class="section" id="demo-gate" data-searchable>
+    <div class="section-title">Session &amp; Demo Gate</div>
+    <div class="section-sub">Auth system and action limiting</div>
+
+    <h3>Session ID</h3>
+    <p>All API calls require an <code>x-session-id</code> header. Set at login. Stored as <code>session.sessionId</code> in the frontend and passed via the <code>setSession()</code> helper in <code>api.ts</code>.</p>
+
+    <h3>Demo Gate</h3>
+    <p>Controlled in <code>services/demo_gate.py</code>. <code>DEMO_MAX_ACTIONS</code> limits actions per session. For internal use, this is set to <code>999999</code> (effectively unlimited). For XPRIZE demo contexts, a lower limit applies.</p>
+
+    <h3>Login Password</h3>
+    <p>Current password: <code>DEMO2026</code></p>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       GLOSSARY
+  ════════════════════════════════════ -->
+  <section class="section" id="glossary" data-searchable>
+    <div class="section-title">Glossary</div>
+    <div class="section-sub">Quick-reference definitions</div>
+
+    <table>
+      <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Intelligence Depth</strong></td><td>0–100 score measuring the quality and completeness of a supplier's KB. Gates Field Intelligence at 50.</td></tr>
+        <tr><td><strong>Convergence Index (CI)</strong></td><td>0–100 score measuring how well a prospect aligns with a supplier's capability + current buying signals.</td></tr>
+        <tr><td><strong>Buying Signal</strong></td><td>A concrete, time-stamped prospect event (tender, leadership change, capex, etc.) that indicates a purchasing window is open.</td></tr>
+        <tr><td><strong>Approach Window</strong></td><td>Synthesised timing recommendation for when to contact a prospect, based on active buying signals.</td></tr>
+        <tr><td><strong>Honest Gate</strong></td><td>Message shown when CI &lt;60. Blocks premature outreach, auto-parks the opportunity, suggests stronger alternatives.</td></tr>
+        <tr><td><strong>Relationship Profile</strong></td><td>The full research output for a prospect — overview, context, decision maker, signals, CI, recommended path.</td></tr>
+        <tr><td><strong>Monitored Position</strong></td><td>A parked prospect in Active Watch with a trigger condition. Firestore collection: <code>monitored_positions</code>.</td></tr>
+        <tr><td><strong>Outcome Memory</strong></td><td>Firestore collection tracking what happened after an approach — won/lost, objections, timing. Used by STRATEGIST.</td></tr>
+        <tr><td><strong>INTELLIGENCE GAP</strong></td><td>KB status label when Intelligence Depth &lt;50. Field Intelligence is blocked.</td></tr>
+        <tr><td><strong>VALUE BRIEF READY</strong></td><td>KB status when depth is 50–79. Can run Field Intelligence. Can generate First Signal and Value Brief.</td></tr>
+        <tr><td><strong>PROPOSAL READY</strong></td><td>KB status when depth is 80–89. Full proposal capability unlocked.</td></tr>
+        <tr><td><strong>SINGULARITY READY</strong></td><td>KB status when depth is 90+. Peak intelligence — highest-quality proposals and convergence scoring.</td></tr>
+        <tr><td><strong>STRATALYST</strong></td><td>Built agent. Enriches KBs by finding and ingesting web sources. Triggered per-supplier from the KB view.</td></tr>
+        <tr><td><strong>STRATASCOUT</strong></td><td>Proactive prospect hunter. Geography-scoped, capability-matched. Deposits candidates to Prospect Pool for review before full FI runs.</td></tr>
+        <tr><td><strong>Prospect Pool</strong></td><td>Firestore collection (<code>prospect_pool</code>) where STRATASCOUT deposits discovered candidates. Status: new → reviewed → promoted (FI) or dismissed.</td></tr>
+        <tr><td><strong>Geography Zone</strong></td><td>Mandatory STRATASCOUT parameter controlling hunt scope: Denmark → Scandinavia → Northern Europe → Europe → Global. Start narrow.</td></tr>
+        <tr><td><strong>STRATAGORA</strong></td><td>Planned market intelligence layer. Monitors regulatory pipeline, industry trends, technology shifts. Feeds all other agents — the weather system they operate inside.</td></tr>
+        <tr><td><strong>STRATFORGE</strong></td><td>Planned product/service ideation agent. Matches supplier capabilities against market signals to generate product briefs for evaluation. Finds the next Ungunk.</td></tr>
+        <tr><td><strong>STRATMESH</strong></td><td>Planned relationship and network intelligence agent. Tracks decision maker career moves, warm entry points, industry connections across the prospect landscape.</td></tr>
+        <tr><td><strong>Capability-first intelligence</strong></td><td>Core design principle. Start from "given what I can do, what does the world need?" — not "what do I know about this prospect?" Inverts the reactive CRM model.</td></tr>
+        <tr><td><strong>Manual Seed</strong></td><td>Four plain-language fields Jason fills in per KB: product_plain, buyer_type, use_case, not_this. Fed to every agent before AI reasoning. Prevents product name misinterpretation (e.g. "filter" → water treatment). Shown as "Agent Definition" panel in KB view — amber warning if not set.</td></tr>
+        <tr><td><strong>STRATALINK</strong></td><td>Built agent. Affiliate intelligence and revenue development. Three modules: Partner Library (manage affiliate programs), Research Programs (STRATALINK finds and evaluates programs), Revenue Log (manual referral tracking with commission recording).</td></tr>
+        <tr><td><strong>Adjacent Opportunities</strong></td><td>When FI researches a prospect, STRATALINK also checks the affiliate partner library for adjacent needs the prospect has. Shown as purple panel in FI results. Only appears if active partners exist in the library.</td></tr>
+        <tr><td><strong>Affiliate Partner Library</strong></td><td>Firestore collection <code>affiliate_partners</code>. Stores affiliate programs Jason has joined or is evaluating. Fields: category, commission type/rate, network, referral URL, quality rating, program status.</td></tr>
+        <tr><td><strong>Commission type</strong></td><td>one-time (single payment on conversion), recurring (ongoing % of subscription), hybrid (both). Shown with symbols: 1×, ↻, 1×+↻</td></tr>
+        <tr><td><strong>Referral log</strong></td><td>Firestore collection <code>affiliate_referrals</code>. Manual tracking: referred → in_progress → converted (commission logged) or lost. Revenue summary card shows totals.</td></tr>
+        <tr><td><strong>SOCIAL_SIGNAL</strong></td><td>Buying signal type from Reddit, X, blogs, or review sites where operators describe the problem the supplier solves. Earliest-stage signal — pain before procurement intent has formed. Purple badge in UI.</td></tr>
+        <tr><td><strong>Hunt timeout</strong></td><td>STRATASCOUT hunts have a 120-second backend timeout (asyncio.wait_for). Frontend shows red ■ Stop button (AbortController) during loading. Stopped hunts deposit whatever was found before cancellation.</td></tr>
+        <tr><td><strong>STRATADAR</strong></td><td>Planned agent. Monitors Active Watch positions and fires alerts when trigger conditions are met.</td></tr>
+        <tr><td><strong>STRATEGIST</strong></td><td>Planned agent. Delivers the Monday Brief — weekly cross-pipeline summary with Top 3 Actions.</td></tr>
+        <tr><td><strong>Gemini grounding</strong></td><td>Gemini's web search capability used in research_agent.py and extraction_agent.py. Called via <code>generate_with_grounding()</code>.</td></tr>
+        <tr><td><strong>Folder Sync</strong></td><td>System that ingests local supplier files (PDFs, images) into the corresponding KB by matching folder names.</td></tr>
+        <tr><td><strong>Brand Layer</strong></td><td>The KB profile for a supplier that represents Jason's own product line (e.g. STRATATIV3D). Covers manufacturing capability, positioning, and buyer profiles for the brand as a whole — not individual products.</td></tr>
+        <tr><td><strong>Product Layer</strong></td><td>Individual products within a multi-product supplier, registered in the Product Library (product images) with product_name, brand, and tags. Currently the mechanism for Ungunk within STRATATIV3D.</td></tr>
+        <tr><td><strong>Product Sub-KB</strong></td><td>Planned feature. Each product in a multi-product line gets its own KB with its own Intelligence Depth score. STRATATIV3D becomes the parent brand; Ungunk and future products become child KBs.</td></tr>
+        <tr><td><strong>Private Label</strong></td><td>Resellers who sell MissBlue filters under their own brand name. Tracked in the <code>distribution_channels</code> KB element.</td></tr>
+        <tr><td><strong>MOQ</strong></td><td>Minimum Order Quantity. Referenced in <code>pricing_framework</code> and <code>objections_responses</code> KB elements.</td></tr>
+        <tr><td><strong>GCP / Firestore</strong></td><td>Google Cloud Platform. All data stored in Firestore. GCP project: gen-lang-client-0933865033.</td></tr>
+        <tr><td><strong>DEMO_MAX_ACTIONS</strong></td><td>Session action limit. Set to 999999 for internal use. Controlled in <code>services/demo_gate.py</code>.</td></tr>
+        <tr><td><strong>x-session-id</strong></td><td>HTTP header required on all API calls. Set at login, stored in frontend session state.</td></tr>
+        <tr><td><strong>quality_ratio</strong></td><td>Per-element scoring multiplier (0.0–1.0) combining presence tier, depth bonus, key term score, and specificity.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       API ROUTES
+  ════════════════════════════════════ -->
+  <section class="section" id="api-routes" data-searchable>
+    <div class="section-title">API Routes</div>
+    <div class="section-sub">Backend endpoints — base URL: http://localhost:8080/api</div>
+
+    <h3>Knowledge Base — <code>/knowledge-base</code></h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td>/knowledge-base/create</td><td>Create new KB — web research on creation</td></tr>
+        <tr><td>GET</td><td>/knowledge-base/</td><td>List all KBs</td></tr>
+        <tr><td>GET</td><td>/knowledge-base/{id}</td><td>Get single KB</td></tr>
+        <tr><td>POST</td><td>/knowledge-base/{id}/upload</td><td>Upload and ingest PDF</td></tr>
+        <tr><td>POST</td><td>/knowledge-base/{id}/add-url</td><td>Ingest from URL (with optional focus_element and context_note)</td></tr>
+        <tr><td>PATCH</td><td>/knowledge-base/{id}/update-url</td><td>Update website URL — editable via ✎ in KB view</td></tr>
+        <tr><td>POST</td><td>/knowledge-base/{id}/images/upload</td><td>Upload product image (product_name, brand, tags)</td></tr>
+        <tr><td>GET</td><td>/knowledge-base/{id}/images</td><td>List all images for supplier</td></tr>
+        <tr><td>GET</td><td>/knowledge-base/{id}/images/search?q=</td><td>Search images by product/brand/tag</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Field Intelligence — <code>/field-intelligence</code></h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td>/field-intelligence/research</td><td>Research prospect — returns CI, signals, profile</td></tr>
+        <tr><td>GET</td><td>/field-intelligence/profiles/{supplier_id}</td><td>List relationship profiles for a supplier</td></tr>
+        <tr><td>GET</td><td>/field-intelligence/profile/{profile_id}</td><td>Get single relationship profile</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Active Watch — <code>/active-watch</code></h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td>/active-watch/</td><td>List monitored positions</td></tr>
+        <tr><td>POST</td><td>/active-watch/scan</td><td>Scan all positions for trigger events</td></tr>
+      </tbody>
+    </table>
+
+    <h3>STRATALYST — <code>/api/stratalyst</code></h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td>/api/stratalyst/research-gaps</td><td>Analyse gaps, find web sources, return findings brief</td></tr>
+        <tr><td>POST</td><td>/api/stratalyst/approve-sources</td><td>Ingest approved sources into KB</td></tr>
+        <tr><td>GET</td><td>/api/stratalyst/storage</td><td>Per-supplier storage breakdown</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Folder Sync — <code>/api/folder-sync</code></h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td>/api/folder-sync/discover</td><td>Find local folders without matching KBs</td></tr>
+        <tr><td>POST</td><td>/api/folder-sync/{id}/sync</td><td>Ingest files from matching supplier folder</td></tr>
+      </tbody>
+    </table>
+
+    <h3>STRATASCOUT — <code>/api/stratascout</code></h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td>/api/stratascout/geographies</td><td>Available geography zones</td></tr>
+        <tr><td>POST</td><td>/api/stratascout/hunt</td><td>Run hunt (supplier_id, geography, sector_focus, count)</td></tr>
+        <tr><td>GET</td><td>/api/stratascout/pool</td><td>List Prospect Pool (optional status filter)</td></tr>
+        <tr><td>POST</td><td>/api/stratascout/pool/{id}/promote</td><td>Promote to Field Intelligence</td></tr>
+        <tr><td>POST</td><td>/api/stratascout/pool/{id}/dismiss</td><td>Dismiss from pool</td></tr>
+        <tr><td>POST</td><td>/api/stratascout/pool/{id}/park</td><td>Park to Active Watch without FI</td></tr>
+      </tbody>
+    </table>
+
+    <h3>STRATALINK — <code>/api/stratalink</code></h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td>/api/stratalink/categories</td><td>List affiliate categories</td></tr>
+        <tr><td>POST</td><td>/api/stratalink/partners</td><td>Add partner to library</td></tr>
+        <tr><td>GET</td><td>/api/stratalink/partners</td><td>List partners (optional category/status filters)</td></tr>
+        <tr><td>PATCH</td><td>/api/stratalink/partners/{id}</td><td>Update partner fields</td></tr>
+        <tr><td>DELETE</td><td>/api/stratalink/partners/{id}</td><td>Remove partner</td></tr>
+        <tr><td>POST</td><td>/api/stratalink/research-category</td><td>Research programs in a category (STRATALINK agent)</td></tr>
+        <tr><td>POST</td><td>/api/stratalink/evaluate</td><td>Deep-evaluate a specific program URL</td></tr>
+        <tr><td>POST</td><td>/api/stratalink/referrals</td><td>Log a referral</td></tr>
+        <tr><td>GET</td><td>/api/stratalink/referrals</td><td>List referrals (optional status filter)</td></tr>
+        <tr><td>PATCH</td><td>/api/stratalink/referrals/{id}/convert</td><td>Mark converted + log commission earned</td></tr>
+        <tr><td>PATCH</td><td>/api/stratalink/referrals/{id}/status</td><td>Update referral status</td></tr>
+        <tr><td>GET</td><td>/api/stratalink/revenue-summary</td><td>Revenue totals, conversion rate, by-partner breakdown</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+
+  <!-- ════════════════════════════════════
+       FILE MAP
+  ════════════════════════════════════ -->
+  <section class="section" id="file-map" data-searchable>
+    <div class="section-title">File Map</div>
+    <div class="section-sub">Root: C:\Claude Code Folder\STRATAGENT SALES APP\STRATAGENT Sales App\stratagent\</div>
+
+    <table>
+      <thead><tr><th>What</th><th>Path</th></tr></thead>
+      <tbody>
+        <tr><td>Backend root</td><td><code>stratagent/backend/</code></td></tr>
+        <tr><td>Frontend src</td><td><code>stratagent/frontend/src/</code></td></tr>
+        <tr><td>Main FastAPI app</td><td><code>backend/main.py</code></td></tr>
+        <tr><td>KB router</td><td><code>backend/routers/knowledge_base.py</code></td></tr>
+        <tr><td>Field Intelligence router</td><td><code>backend/routers/field_intelligence.py</code></td></tr>
+        <tr><td>Active Watch router</td><td><code>backend/routers/active_watch.py</code></td></tr>
+        <tr><td>Output Engine router</td><td><code>backend/routers/output_engine.py</code></td></tr>
+        <tr><td>Folder Sync router</td><td><code>backend/routers/folder_sync.py</code></td></tr>
+        <tr><td>STRATALYST router</td><td><code>backend/routers/stratalyst.py</code></td></tr>
+        <tr><td>STRATASCOUT router</td><td><code>backend/routers/stratascout.py</code></td></tr>
+        <tr><td>STRATALINK router</td><td><code>backend/routers/stratalink.py</code></td></tr>
+        <tr><td>Research Agent (FI)</td><td><code>backend/agents/research_agent.py</code></td></tr>
+        <tr><td>Extraction Agent (KB)</td><td><code>backend/agents/extraction_agent.py</code></td></tr>
+        <tr><td>Output Agent</td><td><code>backend/agents/output_agent.py</code></td></tr>
+        <tr><td>Watch Agent (→ STRATADAR)</td><td><code>backend/agents/watch_agent.py</code></td></tr>
+        <tr><td>STRATALYST Agent</td><td><code>backend/agents/stratalyst_agent.py</code></td></tr>
+        <tr><td>STRATASCOUT Agent</td><td><code>backend/agents/stratascout_agent.py</code></td></tr>
+        <tr><td>STRATALINK Agent</td><td><code>backend/agents/stratalink_agent.py</code></td></tr>
+        <tr><td>STRATADAR Agent</td><td><code>backend/agents/stratadar_agent.py</code></td></tr>
+        <tr><td>STRATEGIST Agent</td><td><code>backend/agents/strategist_agent.py</code></td></tr>
+        <tr><td>STRATEGIST Router</td><td><code>backend/routers/strategist.py</code></td></tr>
+        <tr><td>STRATEGIST Page</td><td><code>frontend/src/pages/Strategist.tsx</code></td></tr>
+        <tr><td>STRATALYST config</td><td><code>backend/stratalyst_config.py</code></td></tr>
+        <tr><td>Firestore service</td><td><code>backend/services/firestore.py</code></td></tr>
+     

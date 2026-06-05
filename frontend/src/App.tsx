@@ -6,6 +6,9 @@ import KnowledgeBase from './pages/KnowledgeBase'
 import FieldIntelligence from './pages/FieldIntelligence'
 import ActiveWatch from './pages/ActiveWatch'
 import OutputEngine from './pages/OutputEngine'
+import StratAScout from './pages/StratAScout'
+import StratALink from './pages/StratALink'
+import Strategist from './pages/Strategist'
 import Layout from './components/shared/Layout'
 
 export interface Session {
@@ -29,7 +32,11 @@ export default function App() {
         <Route path="/knowledge-base/:supplierId" element={<KnowledgeBase session={session} />} />
         <Route path="/field-intelligence" element={<FieldIntelligence session={session} />} />
         <Route path="/active-watch" element={<ActiveWatch session={session} />} />
-        <Route path="/output/:profileId" element={<OutputEngine session={session} />} />
+        <Route path="/stratascout" element={<StratAScout session={session} />} />
+        <Route path="/output" element={<OutputEngine session={session} />} />
+        <Route path="/stratalink" element={<StratALink session={session} />} />
+        <Route path="/strategist" element={<Strategist session={session} />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>
   )

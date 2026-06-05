@@ -9,6 +9,7 @@ import uuid
 from services import firestore as db
 from services.demo_gate import check_and_increment
 from agents.research_agent import research_prospect, find_alternative_prospects
+from agents.stratalink_agent import match_affiliates_to_prospect
 
 router = APIRouter()
 
@@ -55,32 +56,37 @@ async def research(
         "watch_status": "active" if score >= 60 else "monitoring",
     })
 
+    # Check affiliate library for adjacent opportunities
+    adjacent_opportunities = []
+    try:
+        active_partners = db.list_affiliate_partners(status="active")
+        if active_partners:
+            adjacent_opportunities = await match_affiliates_to_prospect(profile, active_partners)
+    except Exception:
+        pass  # Non-blocking — affiliate match failure never breaks FI
+
     response = {
         "profile_id": profile_id,
         "company_name": payload.company_name,
         "convergence_index": score,
         "recommended_path": profile.get("recommended_path"),
         "profile": profile,
+        "adjacent_opportunities": adjacent_opportunities,
     }
 
-    # If below 60, find alternatives
+    # If below 60, add alternative suggestions — profile is always shown in full
     if score < 60:
-        alternatives = await find_alternative_prospects(kb, payload.company_name)
-        response["honest_gate"] = (
-            "We don't know enough about this company's world to approach them "
-            "credibly yet. Here are stronger alternatives — or park this "
-            "opportunity and we'll watch for the right moment."
-        )
-        response["alternatives"] = alternatives
-        # Auto-park
-        db.save_monitored_position(str(uuid.uuid4()), {
-            "supplier_id": payload.supplier_id,
-            "company_name": payload.company_name,
-            "profile_id": profile_id,
-            "reason_parked": "Convergence Index below 60",
-            "convergence_index": score,
-            "trigger": {"type": "threshold", "value": 60},
-        })
+        try:
+            alternatives = await find_alternative_prospects(kb, payload.company_name)
+        except Exception:
+            alternatives = []
+        if alternatives:
+            response["honest_gate"] = (
+                "CI is below 60 based on current intelligence. Review the profile above — "
+                "if the fit is real, park and watch for a buying signal. "
+                "These companies may also be worth approaching in parallel."
+            )
+            response["alternatives"] = alternatives
 
     return response
 

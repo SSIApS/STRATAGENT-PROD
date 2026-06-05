@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from routers import knowledge_base, field_intelligence, active_watch, output_engine
+from routers import knowledge_base, field_intelligence, active_watch, output_engine, folder_sync, stratalyst, stratascout, stratalink, strategist
 from services.demo_gate import verify_password, create_session_id
 
 app = FastAPI(
@@ -29,6 +29,11 @@ app.include_router(knowledge_base.router, prefix="/api/knowledge-base", tags=["K
 app.include_router(field_intelligence.router, prefix="/api/field-intelligence", tags=["Field Intelligence"])
 app.include_router(active_watch.router, prefix="/api/active-watch", tags=["Active Watch"])
 app.include_router(output_engine.router, prefix="/api/output", tags=["Output Engine"])
+app.include_router(folder_sync.router, prefix="/api/folder-sync", tags=["Folder Sync"])
+app.include_router(stratalyst.router, prefix="/api/stratalyst", tags=["STRATALYST"])
+app.include_router(stratascout.router, prefix="/api/stratascout", tags=["STRATASCOUT"])
+app.include_router(stratalink.router, prefix="/api/stratalink", tags=["STRATALINK"])
+app.include_router(strategist.router, prefix="/api/strategist", tags=["STRATEGIST"])
 
 
 class AuthRequest(BaseModel):

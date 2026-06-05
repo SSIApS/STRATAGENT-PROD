@@ -4,16 +4,25 @@ Loads secrets from Google Cloud Secret Manager in production,
 falls back to environment variables for local development.
 """
 import os
+import pathlib
 from google.cloud import secretmanager
 from functools import lru_cache
+from dotenv import load_dotenv
+load_dotenv()
 
 
 PROJECT_ID = "gen-lang-client-0933865033"
+
+# Local folder structure — root of the STRATAGENT Sales App directory
+_BACKEND_DIR = pathlib.Path(__file__).parent      # .../stratagent/backend
+_APP_ROOT = _BACKEND_DIR.parent.parent            # .../STRATAGENT Sales App
+LOCAL_SUPPLIERS_ROOT = str(_APP_ROOT / "Suppliers")
+LOCAL_PRODUCTS_ROOT = str(_APP_ROOT / "Products")
 GCS_BUCKET = "stratagent-documents"
 FIRESTORE_DATABASE = "(default)"
-GEMINI_MODEL = "gemini-2.5-flash-preview-05-20"  # Falls back gracefully to latest available
+GEMINI_MODEL = "gemini-2.5-flash"
 DEMO_PASSWORD = "DEMO2026"
-DEMO_MAX_ACTIONS = 5
+DEMO_MAX_ACTIONS = 999999  # Internal tool — no action limit
 
 
 def get_secret(secret_name: str) -> str:

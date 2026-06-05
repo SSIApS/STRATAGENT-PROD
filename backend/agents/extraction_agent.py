@@ -78,7 +78,7 @@ Rules:
     return _parse_json_response(response)
 
 
-async def extract_from_url(url: str, company_name: str) -> dict:
+async def extract_from_url(url: str, company_name: str, focus_element: str = "", context_note: str = "") -> dict:
     """Fetch a URL and extract intelligence from its content."""
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -87,10 +87,16 @@ async def extract_from_url(url: str, company_name: str) -> dict:
     except Exception:
         return {}
 
+    focus_hint = ""
+    if focus_element:
+        focus_hint = f"\nPRIORITY FOCUS: This source was added specifically to address the intelligence gap in '{focus_element}'. Extract this element with extra detail."
+    if context_note:
+        focus_hint += f"\nUSER CONTEXT: {context_note}"
+
     prompt = f"""
 Extract structured sales intelligence from this web page for {company_name}.
 
-URL: {url}
+URL: {url}{focus_hint}
 PAGE CONTENT:
 {text}
 
@@ -101,7 +107,8 @@ Return a JSON object with these exact keys (null if not found):
   "certifications": "certifications or standards mentioned",
   "case_studies": "case studies or customer references",
   "competitive_positioning": "competitive claims or differentiators",
-  "pricing_framework": "pricing if mentioned",
+  "pricing_framework": "pricing if mentioned — include retail price, volume tiers, currency",
+  "distribution_channels": "if this is a retailer or distributor page: channel name, brand used (original or private label), price point, buyer segment served, volume pricing tiers",
   "reference_projects": "named projects or clients",
   "objections_responses": "FAQs or common questions addressed"
 }}
@@ -114,31 +121,135 @@ Return only the JSON object.
 
 def score_intelligence_depth(profile: dict) -> dict:
     """
-    Score each KB element based on content presence and quality.
-    Returns dict of element -> score (out of its weight).
+    Score each KB element based on content quality, not just length.
+
+    Scoring model (per element):
+      - Presence tier  (0 → 0.5): is anything there at all?
+      - Depth bonus    (up to 0.2): multiple paragraphs / accumulated sources
+      - Key terms      (up to 0.15): domain-specific terms that signal real intelligence
+      - Specificity    (up to 0.15): numbers, model codes, named entities, measurements
+
+    Each element score = quality_ratio (0.0–1.0) × element max weight.
+    Total max = 100.
     """
-    weights = {
-        "product_catalogue": 20,
-        "technical_datasheets": 15,
-        "certifications": 10,
-        "case_studies": 20,
-        "competitive_positioning": 10,
-        "pricing_framework": 10,
-        "reference_projects": 10,
-        "objections_responses": 5,
+    import re
+
+    WEIGHTS = {
+        "product_catalogue":      20,
+        "technical_datasheets":   15,
+        "certifications":         10,
+        "case_studies":           20,
+        "competitive_positioning":10,
+        "pricing_framework":       8,
+        "distribution_channels":  12,
+        "reference_projects":     10,
+        "objections_responses":    5,
     }
 
-    scores = {}
-    for element, max_score in weights.items():
-        value = profile.get(element)
-        if not value or value == "null":
-            scores[element] = 0
-        elif len(str(value)) < 50:
-            scores[element] = max_score * 0.3  # Minimal content
-        elif len(str(value)) < 200:
-            scores[element] = max_score * 0.6  # Partial content
+    # Key terms that signal genuine intelligence per element
+    KEY_TERMS = {
+        "product_catalogue": [
+            "series", "model", "range", "variant", "type", "grade", "version",
+            "standard", "custom", "OEM", "capacity", "size", "format", "option",
+        ],
+        "technical_datasheets": [
+            "temperature", "pressure", "voltage", "current", "flow", "speed",
+            "tolerance", "dimension", "weight", "rating", "resistance", "IP",
+            "operating", "specification", "performance", "output", "input",
+        ],
+        "certifications": [
+            "ISO", "ATEX", "CE", "DNV", "UL", "FDA", "REACH", "RoHS", "IECEx",
+            "NORSOK", "API", "ASME", "PED", "GOST", "EN", "certified", "approved",
+            "compliant", "accredited", "certificate", "directive",
+        ],
+        "case_studies": [
+            "customer", "client", "project", "installation", "deployed", "reduced",
+            "increased", "saved", "improved", "result", "outcome", "challenge",
+            "solution", "reference", "sector", "plant", "facility", "site",
+        ],
+        "competitive_positioning": [
+            "competitor", "alternative", "advantage", "superior", "outperform",
+            "versus", "compared", "market", "unique", "leader", "difference",
+            "benchmark", "better", "preferred", "win", "loss",
+        ],
+        "pricing_framework": [
+            "price", "cost", "rate", "fee", "quote", "budget", "contract",
+            "volume", "discount", "minimum", "order", "MOQ", "EUR", "USD",
+            "GBP", "DKK", "per unit", "per metre", "annual",
+        ],
+        "reference_projects": [
+            "project", "installation", "site", "plant", "facility", "named",
+            "completed", "delivered", "commissioned", "awarded", "contract",
+            "country", "region", "GW", "MW", "km", "tonnes", "units",
+        ],
+        "objections_responses": [
+            "concern", "question", "objection", "FAQ", "why", "how", "what if",
+            "warranty", "support", "lead time", "availability", "minimum",
+            "alternative", "comparison", "limitation",
+        ],
+        "distribution_channels": [
+            "distributor", "reseller", "retailer", "webshop", "stockist", "vendor",
+            "private label", "white label", "channel", "wholesale", "direct",
+            "partner", "dealer", "agent", "catalogue", "listing", "DKK", "EUR",
+            "per pack", "stk", "carton", "pallet", "bulk", "volume",
+        ],
+    }
+
+    # Patterns that indicate specific, verifiable data
+    SPECIFICITY_PATTERNS = [
+        r"\b\d+[\.,]?\d*\s*(?:°C|°F|K|bar|psi|MPa|kPa|V|A|W|kW|MW|GW|Hz|rpm|m/s|km/h|mm|cm|m|km|kg|g|l|ml|%)\b",
+        r"\b(?:ISO|EN|ATEX|IEC|NORSOK|API|ASME|CE|UL|DNV)\s*[\d\w\-]+",
+        r"\b[A-Z]{2,6}[\-\s]?\d{3,}[A-Z]?\b",  # model/part numbers
+        r"\b(?:19|20)\d{2}\b",                   # years
+        r"\b\d+\s*(?:years?|months?|weeks?|days?)\b",
+        r"\b(?:€|£|\$|USD|EUR|GBP|DKK)\s*[\d,\.]+",
+        r"\b\d+[\.,]\d+\b",                       # decimal numbers = measurements
+    ]
+
+    def _quality_ratio(text, element: str) -> float:
+        if text is None:
+            return 0.0
+        if not isinstance(text, str):
+            text = str(text)
+        if not text or text.strip().lower() in ("null", "none", "n/a", ""):
+            return 0.0
+        length = len(text)
+
+        # 1. Presence tier — baseline from length
+        if length < 30:
+            presence = 0.15
+        elif length < 100:
+            presence = 0.30
+        elif length < 300:
+            presence = 0.45
         else:
-            scores[element] = max_score  # Full content
+            presence = 0.50   # max from presence alone
+
+        # 2. Depth bonus — reward accumulated content (multiple paragraphs/sources)
+        paragraph_count = len([p for p in text.split("\n\n") if p.strip()])
+        depth = min(0.20, paragraph_count * 0.04)
+
+        # 3. Key terms — domain-specific vocabulary for this element
+        terms = KEY_TERMS.get(element, [])
+        text_lower = text.lower()
+        term_hits = sum(1 for t in terms if t.lower() in text_lower)
+        key_term_score = min(0.15, term_hits * 0.025)
+
+        # 4. Specificity — numbers, codes, measurements, named entities
+        spec_hits = sum(
+            len(re.findall(pattern, text, re.IGNORECASE))
+            for pattern in SPECIFICITY_PATTERNS
+        )
+        specificity = min(0.15, spec_hits * 0.03)
+
+        return min(1.0, presence + depth + key_term_score + specificity)
+
+    scores = {}
+    for element, max_weight in WEIGHTS.items():
+        value = profile.get(element)
+        ratio = _quality_ratio(value, element)
+        scores[element] = round(ratio * max_weight, 2)
+
     return scores
 
 

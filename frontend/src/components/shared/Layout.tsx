@@ -4,8 +4,11 @@ import type { Session } from '../../App'
 const NAV = [
   { to: '/dashboard', label: 'DASHBOARD' },
   { to: '/knowledge-base', label: 'KNOWLEDGE BASE' },
+  { to: '/stratascout', label: 'STRATASCOUT' },
   { to: '/field-intelligence', label: 'FIELD INTELLIGENCE' },
   { to: '/active-watch', label: 'ACTIVE WATCH' },
+  { to: '/stratalink', label: 'STRATALINK' },
+  { to: '/strategist', label: 'STRATEGIST' },
 ]
 
 export default function Layout({
@@ -23,10 +26,11 @@ export default function Layout({
       <header className="flex items-center justify-between px-6 py-4 border-b"
               style={{ borderColor: 'var(--stratagent-border)', background: 'var(--stratagent-panel)' }}>
         <div className="flex items-center gap-8">
-          <span className="text-lg font-black tracking-tighter"
-                style={{ color: 'var(--stratagent-gold)' }}>
-            STRATAGENT
-          </span>
+          <img
+            src="/stratagent-logo-nav.png"
+            alt="STRATAGENT"
+            style={{ height: '28px', width: 'auto' }}
+          />
           <nav className="flex gap-6">
             {NAV.map(n => (
               <NavLink
@@ -46,15 +50,10 @@ export default function Layout({
           </nav>
         </div>
 
-        {/* Actions remaining */}
-        <div className="flex items-center gap-2 text-xs"
+        {/* Internal mode indicator */}
+        <div className="text-xs uppercase tracking-widest"
              style={{ color: 'var(--stratagent-muted)' }}>
-          <span>ACTIONS REMAINING</span>
-          <span className="font-bold text-sm"
-                style={{ color: session.actionsRemaining <= 1 ? 'var(--stratagent-red)' : 'var(--stratagent-gold)' }}>
-            {session.actionsRemaining}
-          </span>
-          <span>/ 5</span>
+          Internal
         </div>
       </header>
 
@@ -66,9 +65,4 @@ export default function Layout({
       {/* Footer */}
       <footer className="px-6 py-4 text-xs border-t text-center"
               style={{ borderColor: 'var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
-        Jason L. Smith · Strategic Sales International ApS · info@strategic.dk · CVR: 41945621 · Roskilde, Denmark
-        &nbsp;·&nbsp; STRATAGENT — The Intelligence Behind Agentic Sales.
-      </footer>
-    </div>
-  )
-}
+        Jason L. Smith · Strategic Sales International ApS · info@strategic.dk · CVR: 41945621 · 
