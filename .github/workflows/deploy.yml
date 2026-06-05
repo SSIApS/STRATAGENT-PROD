@@ -1,8 +1,11 @@
 name: Deploy STRATAGENT to Cloud Run
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:  # Manual trigger only — auto-deploy disabled until Block 4 WIF setup complete
+    inputs:
+      confirm:
+        description: 'Type DEPLOY to confirm'
+        required: true
 
 env:
   PROJECT_ID: gen-lang-client-0933865033
