@@ -25,7 +25,7 @@ export default function DemoGate({ onAuthenticated }: { onAuthenticated: (s: Ses
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center"
-         style={{ background: 'var(--stratagent-dark)' }}>
+         style={{ background: '#0a0a0f' }}>
 
       <div className="mb-8 text-center">
         <img
