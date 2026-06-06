@@ -22,3 +22,6 @@ pypdf>=4.0.0
 
 # Environment config
 python-dotenv>=1.0.0
+
+# Image processing (auto-resize large uploads before Firestore storage)
+Pillow>=10.0.0

@@ -330,19 +330,48 @@ async def upload_product_image(
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image must be under 5 MB")
 
+    # Firestore document limit is 1 MB. Base64 adds ~33% overhead.
+    # Auto-resize if image would exceed safe limit (~700 KB original).
+    FIRESTORE_SAFE_BYTES = 700 * 1024
+    if len(content) > FIRESTORE_SAFE_BYTES:
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(content))
+            # Resize to max 1200px wide, preserving aspect ratio
+            max_w = 1200
+            if img.width > max_w:
+                ratio = max_w / img.width
+                img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
+            buf = io.BytesIO()
+            fmt = "PNG" if file.content_type == "image/png" else "JPEG"
+            img.save(buf, format=fmt, optimize=True, quality=82)
+            content = buf.getvalue()
+        except ImportError:
+            # Pillow not installed — enforce hard size limit
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image is too large for storage ({len(content)//1024} KB). Please resize to under 700 KB and re-upload."
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not process image: {e}")
+
     image_id = str(uuid.uuid4())
     encoded = base64.b64encode(content).decode("utf-8")
 
-    db.save_product_image(image_id, {
-        "image_id": image_id,
-        "supplier_id": supplier_id,
-        "product_name": product_name,
-        "brand": brand,
-        "tags": tags,
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "data": encoded,
-    })
+    try:
+        db.save_product_image(image_id, {
+            "image_id": image_id,
+            "supplier_id": supplier_id,
+            "product_name": product_name,
+            "brand": brand,
+            "tags": tags,
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "data": encoded,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
 
     return {
         "image_id": image_id,
