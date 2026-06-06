@@ -88,14 +88,60 @@ function BuyingSignals({ signals, approachWindow }: { signals: any[]; approachWi
   )
 }
 
+// ---------------------------------------------------------------------------
+// Markdown renderer — converts ## headings, **bold**, * bullets to JSX
+// Used for output panel display and browser print
+// ---------------------------------------------------------------------------
+function MarkdownBlock({ text }: { text: string }) {
+  const renderInline = (line: string, key: string | number) => {
+    const parts = line.split(/(\*\*[^*\n]+\*\*)/)
+    return (
+      <span key={key}>
+        {parts.map((p, j) =>
+          p.startsWith('**') && p.endsWith('**')
+            ? <strong key={j} style={{ fontWeight: 700 }}>{p.slice(2, -2)}</strong>
+            : p
+        )}
+      </span>
+    )
+  }
+
+  const elements: React.ReactNode[] = []
+  const lines = text.split('\n')
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const s = line.trim()
+
+    if (!s || /^[-*_]{3,}$/.test(s)) continue
+
+    if (s.startsWith('## ')) {
+      elements.push(<div key={i} style={{ color: '#E87A00', fontWeight: 700, fontSize: '1.05rem', marginTop: '1rem', marginBottom: '0.3rem' }}>{s.slice(3)}</div>)
+    } else if (s.startsWith('### ')) {
+      elements.push(<div key={i} style={{ color: '#E87A00', fontWeight: 700, fontSize: '0.9rem', marginTop: '0.8rem', marginBottom: '0.2rem' }}>{s.slice(4)}</div>)
+    } else if (s.startsWith('#### ')) {
+      elements.push(<div key={i} style={{ color: '#E87A00', fontWeight: 600, fontSize: '0.85rem', marginTop: '0.5rem' }}>{s.slice(5)}</div>)
+    } else if (/^\s{0,8}[*-]\s/.test(line)) {
+      const depth = (line.length - line.trimStart().length) >= 4 ? 1 : 0
+      const content = line.replace(/^\s*[*-]\s+/, '')
+      elements.push(
+        <div key={i} style={{ display: 'flex', gap: '0.5rem', paddingLeft: `${0.5 + depth * 1.2}rem`, marginBottom: '0.15rem' }}>
+          <span style={{ color: '#E87A00', flexShrink: 0, marginTop: '0.05rem' }}>•</span>
+          <span>{renderInline(content, i)}</span>
+        </div>
+      )
+    } else {
+      elements.push(<div key={i} style={{ marginBottom: '0.35rem' }}>{renderInline(s, i)}</div>)
+    }
+  }
+
+  return <div className="select-all" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>{elements}</div>
+}
+
 export default function FieldIntelligence({ session }: { session: Session }) {
   const [suppliers, setSuppliers] = useState<any[]>([])
-  const [supplierId, setSupplierId] = useState(() =>
-    localStorage.getItem('fi_last_supplier') || ''
-  )
-  const [companyName, setCompanyName] = useState(() =>
-    localStorage.getItem('fi_last_company') || ''
-  )
+  const [supplierId, setSupplierId] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [outputLoading, setOutputLoading] = useState(false)
@@ -131,7 +177,6 @@ export default function FieldIntelligence({ session }: { session: Session }) {
   // When supplier changes, load their most recent FI result
   useEffect(() => {
     if (!supplierId) return
-    localStorage.setItem('fi_last_supplier', supplierId)
     if (result && result.supplier_id === supplierId) return // already showing right supplier
     // If router state promoted a specific company, don't restore a different old result
     const promotedCompany = (location.state as any)?.company_name
@@ -444,10 +489,10 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 <div className="stratagent-print-section">
                   <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Outreach Email</div>
                   <h2>Outreach Email</h2>
-                  <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
-                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
-                    {outputResult.output.email}
-                  </pre>
+                  <div className="rounded-lg p-4"
+                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)' }}>
+                    <MarkdownBlock text={outputResult.output.email} />
+                  </div>
                 </div>
               )}
 
@@ -455,10 +500,10 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 <div className="stratagent-print-section">
                   <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Value Brief</div>
                   <h2>Value Brief</h2>
-                  <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
-                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
-                    {outputResult.output.brief}
-                  </pre>
+                  <div className="rounded-lg p-4"
+                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)' }}>
+                    <MarkdownBlock text={outputResult.output.brief} />
+                  </div>
                 </div>
               )}
 
@@ -466,10 +511,10 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 <div className="stratagent-print-section">
                   <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Technical Proposal</div>
                   <h2>Technical Proposal</h2>
-                  <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
-                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
-                    {outputResult.output.proposal}
-                  </pre>
+                  <div className="rounded-lg p-4"
+                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)' }}>
+                    <MarkdownBlock text={outputResult.output.proposal} />
+                  </div>
                 </div>
               )}
 
@@ -477,10 +522,10 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 <div className="stratagent-print-section">
                   <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Engagement Brief / RFQ</div>
                   <h2>Engagement Brief / RFQ Framework</h2>
-                  <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
-                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
-                    {outputResult.output.engagement_brief}
-                  </pre>
+                  <div className="rounded-lg p-4"
+                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)' }}>
+                    <MarkdownBlock text={outputResult.output.engagement_brief} />
+                  </div>
                 </div>
               )}
 
@@ -488,19 +533,15 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 <div className="stratagent-print-section">
                   <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Qualifying Questions</div>
                   <h2>Qualifying Questions</h2>
-                  <div className="space-y-2">
+                  <div className="rounded-lg p-4"
+                       style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)' }}>
                     {outputResult.output.qualifying_questions.map((q: string, i: number) => (
-                      <div key={i} className="text-sm px-4 py-2 rounded-lg"
-                           style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)' }}>
-                        {i + 1}. {q}
+                      <div key={i} style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.6rem', fontSize: '0.875rem' }}>
+                        <span style={{ color: '#E87A00', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
+                        <span>{q}</span>
                       </div>
                     ))}
                   </div>
-                  <ol className="stratagent-print-section" style={{ display: 'none' }}>
-                    {outputResult.output.qualifying_questions.map((q: string, i: number) => (
-                      <li key={i}>{q}</li>
-                    ))}
-                  </ol>
                 </div>
               )}
 

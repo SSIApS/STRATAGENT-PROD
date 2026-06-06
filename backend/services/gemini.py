@@ -104,9 +104,7 @@ _SYSTEM_PROMPT = (
     "- Supplier profile -> KNOWLEDGE BASE | Profile strength -> INTELLIGENCE DEPTH\n"
     "- Prospect research -> FIELD INTELLIGENCE | Alignment score -> CONVERGENCE INDEX\n"
     "- Full proposal -> CONVERGENCE PROPOSAL | Profile ready -> SINGULARITY READY\n\n"
-    "SSI ApS FOOTER (all client-facing documents):\n"
-    "Jason L. Smith | Strategic Sales International ApS\n"
-    "info@strategic.dk | www.strategic-dk.com | +45 24 99 23 93\n"
-    "CVR: 41945621 | Roskilde, Denmark\n"
-    "STRATAGENT -- The Intelligence Behind Agentic Sales."
+    "OUTPUT FORMAT:\n"
+    "- Return only the content requested. No meta-commentary, no headers outside the structure asked for.\n"
+    "- Do NOT append any signature block, contact details, or footer to your output unless the prompt explicitly asks for it."
 )

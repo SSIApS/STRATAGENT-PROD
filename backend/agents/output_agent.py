@@ -1,9 +1,8 @@
 """
 STRATAGENT — Output Agent
 Generates graduated documents using Gemini.
-All outputs must meet the standard the operator would sign without editing.
+Uses section markers instead of JSON to avoid parse failures on large responses.
 """
-import json
 import re
 from datetime import date
 from services.gemini import generate
@@ -11,196 +10,274 @@ from services.gemini import generate
 TODAY = date.today().strftime('%d %B %Y')
 
 _NO_FOOTER_RULE = (
-    "IMPORTANT: Do NOT include any signature block, footer, or divider (---) in your JSON output. "
-    "The document builder adds the SSI footer separately. "
-    "Sign emails as: 'Jason L. Smith | Strategic Sales International ApS' — no contact details after the name."
+    "CRITICAL: Do NOT include any SSI footer, contact block, or divider (---) in your output. "
+    "The document builder adds the footer. End each section at the last word of real content."
 )
 
+_EMAIL_RULES = """
+EMAIL — ABSOLUTE RULES (violation = failure):
 
-def _parse_json(response: str) -> dict:
+OPENER: The VERY FIRST WORD of the email must be the decision maker's first name followed by a comma.
+  CORRECT: "Andreas,"
+  WRONG: "Dear Andreas," / "Hi Andreas," / "Hello Andreas," / any greeting word before the name.
+  If you write "Dear" anywhere in this email, you have failed.
+
+LINE 1 (after the name): One sentence naming something SPECIFIC from the intelligence — a real project name, facility, deadline, or regulatory requirement. Must be verifiable. Generic = rejected.
+LINE 2: One sentence about what the supplier does, tied to their specific operational need.
+LINE 3: One direct question — reference a specific deadline, project, or decision.
+
+SIGN-OFF: End with exactly:
+  Best regards,
+  Jason L. Smith | Strategic Sales International ApS
+
+DO NOT add any contact details, footer, phone number, email address, CVR number, or STRATAGENT tagline after the sign-off. The sign-off ends at "ApS" and nothing follows.
+DO NOT use placeholder text like [Your Name], [Name], [Your Company], or similar.
+
+WORD COUNT: Under 100 words total. Count them. Cut ruthlessly if over.
+BANNED PHRASES: "I'm writing to", "I've been following", "I believe there's", "impressive", "truly", "significant", "seamless", "comprehensive", "committed to", "I'd be happy", "looking forward", "strong alignment", "valuable partner", "don't hesitate".
+"""
+
+
+def _parse_sections(response: str) -> dict:
     """
-    Robustly extract a JSON object from a Gemini response.
-    Handles: markdown fences, trailing text after closing brace, whitespace.
-    Falls back to empty dict rather than returning raw text.
+    Extract named sections from a response using ===SECTION=== markers.
+    Robust to any content format, length, or special characters.
     """
-    cleaned = re.sub(r'```(?:json)?\s*', '', response).strip()
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass
-    start = cleaned.find('{')
-    end = cleaned.rfind('}')
-    if start != -1 and end > start:
-        try:
-            return json.loads(cleaned[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-    return {}
+    result = {}
+    markers = {
+        'email':            ('===EMAIL===',       '===END_EMAIL==='),
+        'proposal':         ('===PROPOSAL===',    '===END_PROPOSAL==='),
+        'engagement_brief': ('===ENGAGEMENT===',  '===END_ENGAGEMENT==='),
+        'brief':            ('===BRIEF===',       '===END_BRIEF==='),
+    }
+    for key, (start_tag, end_tag) in markers.items():
+        s = response.find(start_tag)
+        e = response.find(end_tag)
+        if s != -1 and e != -1 and e > s:
+            result[key] = response[s + len(start_tag):e].strip()
+
+    # Qualifying questions: numbered list after ===QUESTIONS===
+    qs = response.find('===QUESTIONS===')
+    qe = response.find('===END_QUESTIONS===')
+    if qs != -1 and qe != -1:
+        block = response[qs + len('===QUESTIONS==='):qe].strip()
+        questions = []
+        for line in block.splitlines():
+            line = line.strip()
+            # Strip leading number/dot/dash
+            line = re.sub(r'^[\d]+[\.\)]\s*', '', line).strip()
+            line = re.sub(r'^[-*]\s*', '', line).strip()
+            if line:
+                questions.append(line)
+        result['qualifying_questions'] = questions
+
+    return result
 
 
 async def generate_convergence_proposal(profile: dict, kb: dict) -> dict:
-    """
-    PATH A — CONVERGENCE PROPOSAL
-    Full technical proposal for Convergence Index 90-100.
-    """
-    prompt = f"""
-You are STRATAGENT generating a CONVERGENCE PROPOSAL — a full technical proposal
-matched to a specific confirmed need. This must be at the standard the operator
-would sign without editing.
+    """PATH A — CONVERGENCE PROPOSAL (SD 90-100)"""
 
-TODAY'S DATE: {TODAY}
+    dm = profile.get('decision_maker', {})
+    first_name = ''
+    if isinstance(dm, dict):
+        full = dm.get('name', '') or ''
+        first_name = full.split()[0] if full else ''
+    elif isinstance(dm, str):
+        first_name = dm.split()[0] if dm else ''
 
-SUPPLIER KNOWLEDGE BASE:
-Company: {kb.get('company_name')}
-Products: {kb.get('profile', {}).get('product_catalogue')}
-Technical differentiators: {kb.get('profile', {}).get('technical_differentiators')}
-Certifications: {kb.get('profile', {}).get('certifications')}
-Case studies: {kb.get('profile', {}).get('case_studies')}
-Competitive positioning: {kb.get('profile', {}).get('competitive_positioning')}
+    signals = profile.get('buying_signals', [])
+    signal_summary = '\n'.join(
+        f"  - [{s.get('type','')} / {s.get('strength','')}] {s.get('signal','')} — {s.get('timing','')}"
+        for s in signals[:5]
+    ) or '  - No confirmed signals — approach based on project/operational intelligence'
 
-PROSPECT RELATIONSHIP PROFILE:
-Company: {profile.get('company_overview')}
-Operational context: {profile.get('operational_context')}
-Decision maker: {profile.get('decision_maker')}
-Buying trigger: {profile.get('buying_trigger')}
-Active projects: {profile.get('active_projects')}
+    prompt = f"""You are STRATAGENT generating a CONVERGENCE PROPOSAL (SD 90/100).
+Every document must be sign-ready without editing.
 
-Generate three documents:
+TODAY: {TODAY}
+FIRST NAME: "{first_name}"
 
-1. OUTREACH EMAIL
-   - Reference the specific project or situation by name
-   - Peer-to-peer tone. Demonstrates we understand their world. Under 200 words.
-   - Address the decision maker by first name if known
-   - Sign off as: "Best regards,\\nJason L. Smith | Strategic Sales International ApS"
-   - Do NOT add any contact details or dividers after the sign-off
+SUPPLIER: {kb.get('company_name')}
+Products: {kb.get('profile', {}).get('product_catalogue', '')}
+Differentiators: {kb.get('profile', {}).get('technical_differentiators', '')}
+Certifications: {kb.get('profile', {}).get('certifications', '')}
+Case studies: {kb.get('profile', {}).get('case_studies', '')}
 
-2. TECHNICAL PROPOSAL
-   - Full proposal matched to their specific need, built from supplier's actual capabilities
-   - Use markdown headings (##, ###) and bullet points (* item) for structure
-   - Use today's date: {TODAY}
-   - Reference the supplier by name (not "we" or "our company") — this is written by Jason on behalf of the supplier
+PROSPECT: {profile.get('company_overview', '')}
+Operational context: {profile.get('operational_context', '')}
+Decision maker: {profile.get('decision_maker', '')}
+Buying trigger: {profile.get('buying_trigger', '')}
+Active projects: {profile.get('active_projects', '')}
+Approach window: {profile.get('approach_window', '')}
 
-3. ENGAGEMENT BRIEF
-   - Pre-completed RFQ framework based on project intelligence
-   - Specific to their application and known projects
-   - Use markdown structure (###, **Label:**) for clarity
+BUYING SIGNALS (drove SD to 90):
+{signal_summary}
+
+Write three documents using these EXACT section markers. Do not add anything outside the markers.
+
+===EMAIL===
+{_EMAIL_RULES}
+Write the email here.
+===END_EMAIL===
+
+===PROPOSAL===
+Write a full technical proposal using markdown headings (##, ###, ####) and bullet points (* item).
+
+Structure:
+## {kb.get('company_name')} Proposal for [Prospect]: [one-line value headline]
+
+**Prepared for:** [Decision maker name, title, company]
+**Prepared by:** Strategic Sales International ApS, on behalf of {kb.get('company_name')}
+**Date:** {TODAY}
+**Singularity Density:** 90/100
+
+### Why Now
+[4-5 bullet points — the specific intelligence that triggered this proposal.
+Reference the actual signals, commissioning dates, regulatory requirements from above.
+This section proves the homework was done. Be factual and specific.]
+
+### 1. Understanding [Prospect]'s Situation
+[Operational context — specific, references real projects]
+
+### 2. Proposed Solution
+[Supplier's integrated offering matched to the specific need]
+
+#### 2.1. [Product category 1]
+[Detail with specs and materials]
+
+#### 2.2. [Product category 2]
+[Detail]
+
+### 3. Technical Differentiators
+[3-4 specific differentiators relevant to this prospect's environment]
+
+### 4. Certifications
+[Only certifications that apply to this prospect's environment]
+
+### 5. Next Steps
+[Specific — reference a commissioning deadline or meeting window]
+===END_PROPOSAL===
+
+===ENGAGEMENT===
+Write a pre-completed RFQ framework using markdown (##, ###, **Label:**).
+Reference the actual projects, environments, and requirements from the intelligence.
+Use {TODAY} as the date. Leave placeholders only where the prospect must supply data (e.g. quantities).
+===END_ENGAGEMENT===
 
 {_NO_FOOTER_RULE}
-
-Return as JSON:
-{{
-  "email": "full email text",
-  "proposal": "full proposal text",
-  "engagement_brief": "full RFQ framework text"
-}}
 """
-    response = await generate(prompt, temperature=0.4)
-    result = _parse_json(response)
-    if not result.get("email"):
-        result["email"] = response
+
+    response = await generate(prompt, temperature=0.35)
+    result = _parse_sections(response)
+
+    if not result.get('email'):
+        # Last resort fallback — something is very wrong with the response
+        result['email'] = f"[Generation failed — check backend logs]\n\nRaw response:\n{response[:500]}"
+
     return result
 
 
 async def generate_mutual_value_brief(profile: dict, kb: dict) -> dict:
-    """
-    PATH B — MUTUAL VALUE BRIEF
-    Value proposition + insight email for Convergence Index 75-89.
-    """
-    prompt = f"""
-You are STRATAGENT generating a MUTUAL VALUE BRIEF — for a prospect where genuine
-alignment exists but a specific project hasn't been confirmed yet.
+    """PATH B — MUTUAL VALUE BRIEF (SD 75-89)"""
 
-TODAY'S DATE: {TODAY}
+    dm = profile.get('decision_maker', {})
+    first_name = ''
+    if isinstance(dm, dict):
+        full = dm.get('name', '') or ''
+        first_name = full.split()[0] if full else ''
 
-SUPPLIER:
-Company: {kb.get('company_name')}
-Products: {kb.get('profile', {}).get('product_catalogue')}
-Differentiators: {kb.get('profile', {}).get('technical_differentiators')}
-Case studies: {kb.get('profile', {}).get('case_studies')}
+    prompt = f"""You are STRATAGENT generating a MUTUAL VALUE BRIEF (SD 75-89).
+Every document must be sign-ready without editing.
 
-PROSPECT:
-Company: {profile.get('company_overview')}
-Operational context: {profile.get('operational_context')}
-Buying trigger: {profile.get('buying_trigger')}
-Decision maker: {profile.get('decision_maker')}
+TODAY: {TODAY}
+FIRST NAME: "{first_name}"
 
-Generate three documents:
+SUPPLIER: {kb.get('company_name')}
+Products: {kb.get('profile', {}).get('product_catalogue', '')}
+Differentiators: {kb.get('profile', {}).get('technical_differentiators', '')}
+Case studies: {kb.get('profile', {}).get('case_studies', '')}
 
-1. FIRST SIGNAL EMAIL
-   - Peer-to-peer. One sharp observation about their world.
-   - One sentence on what the supplier offers. One low-friction question. Under 150 words.
-   - Address the decision maker by first name if known
-   - Sign off as: "Best regards,\\nJason L. Smith | Strategic Sales International ApS"
-   - Do NOT add any contact details or dividers after the sign-off
+PROSPECT: {profile.get('company_overview', '')}
+Operational context: {profile.get('operational_context', '')}
+Buying trigger: {profile.get('buying_trigger', '')}
+Decision maker: {profile.get('decision_maker', '')}
 
-2. MUTUAL VALUE BRIEF
-   - Value proposition built around their known situation
-   - Demonstrates genuine understanding. Professional standard.
-   - Use markdown headings (##, ###) and bullet points (* item) for structure
-   - Use today's date: {TODAY}
+Write three documents using EXACT section markers.
 
-3. QUALIFYING QUESTIONS
-   - 5 questions to uncover the specific need in a first call
-   - Questions that reveal where Path A (full proposal) is justified
+===EMAIL===
+{_EMAIL_RULES}
+Write the email here.
+===END_EMAIL===
+
+===BRIEF===
+Write a mutual value brief using markdown headings and bullet points.
+
+## Value Brief: {kb.get('company_name')} for [Prospect Name]
+**Date:** {TODAY} | **Prepared by:** Strategic Sales International ApS
+
+### The Situation
+[2-3 sentences: what we know about their context and why this supplier is relevant]
+
+### What {kb.get('company_name')} Offers
+[3-4 specific capabilities matched to their situation — with real product names and specs]
+
+### The Fit
+[Why this is a strong match — specific, not generic]
+===END_BRIEF===
+
+===QUESTIONS===
+Write 5 qualifying questions for the first discovery call.
+Number each question on its own line.
+Each must be specific to what we know about this prospect.
+===END_QUESTIONS===
 
 {_NO_FOOTER_RULE}
-
-Return as JSON:
-{{
-  "email": "full email text",
-  "brief": "full value brief text",
-  "qualifying_questions": ["question 1", "question 2", "question 3", "question 4", "question 5"]
-}}
 """
+
     response = await generate(prompt, temperature=0.4)
-    result = _parse_json(response)
-    if not result.get("email"):
-        result["email"] = response
+    result = _parse_sections(response)
+
+    if not result.get('email'):
+        result['email'] = f"[Generation failed]\n\n{response[:300]}"
+
     return result
 
 
 async def generate_first_signal(profile: dict, kb: dict) -> dict:
-    """
-    PATH C — FIRST SIGNAL
-    Insight email only for Convergence Index 60-74.
-    Under 150 words. Always.
-    """
-    prompt = f"""
-You are STRATAGENT generating a FIRST SIGNAL — an insight email that opens a door
-without walking through it. This is for a prospect where alignment is possible
-but not yet confirmed.
+    """PATH C — FIRST SIGNAL (SD 60-74). One email only."""
+
+    dm = profile.get('decision_maker', {})
+    first_name = ''
+    if isinstance(dm, dict):
+        full = dm.get('name', '') or ''
+        first_name = full.split()[0] if full else ''
+
+    prompt = f"""You are STRATAGENT generating a FIRST SIGNAL email (SD 60-74).
+One email. Under 100 words. Sign-ready.
+
+TODAY: {TODAY}
+FIRST NAME: "{first_name}"
 
 SUPPLIER: {kb.get('company_name')}
-Products: {kb.get('profile', {}).get('product_catalogue')}
+Products: {kb.get('profile', {}).get('product_catalogue', '')}
 
-PROSPECT:
-{profile.get('company_overview')}
-Context: {profile.get('operational_context')}
+PROSPECT: {profile.get('company_overview', '')}
+Context: {profile.get('operational_context', '')}
 Trigger: {profile.get('buying_trigger', 'Not identified')}
-Decision maker: {profile.get('decision_maker', {}).get('name', 'Unknown')}
 
-Write ONE email:
-- One sharp, specific observation about the prospect's world (not generic)
-- One sentence on what the supplier offers — specific, not promotional
-- One low-friction question that invites a conversation
-- Under 150 words total
-- Peer-to-peer tone — not a sales pitch
-- No buzzwords, no superlatives, no "I hope this finds you well"
-- Address the decision maker by first name if known
-- Sign off as: "Best regards,\\nJason L. Smith | Strategic Sales International ApS"
-- Do NOT add any contact details or dividers after the sign-off
+===EMAIL===
+{_EMAIL_RULES}
+Write the email here.
+===END_EMAIL===
 
 {_NO_FOOTER_RULE}
-
-Return as JSON:
-{{
-  "email": "full email text",
-  "word_count": 0
-}}
 """
-    response = await generate(prompt, temperature=0.5)
-    result = _parse_json(response)
-    if not result.get("email"):
-        result["email"] = response
-    result["word_count"] = len(result.get("email", "").split())
+
+    response = await generate(prompt, temperature=0.45)
+    result = _parse_sections(response)
+
+    if not result.get('email'):
+        result['email'] = f"[Generation failed]\n\n{response[:300]}"
+
+    result['word_count'] = len(result.get('email', '').split())
     return result
