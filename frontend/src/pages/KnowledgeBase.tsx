@@ -71,6 +71,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   const [seedUseCase, setSeedUseCase] = useState('')
   const [seedNotThis, setSeedNotThis] = useState('')
   const [seedSaving, setSeedSaving] = useState(false)
+  const [draftSeed, setDraftSeed] = useState<any>(null)
   const [supplierOrder, setSupplierOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('stratagent_kb_order') || '[]') } catch { return [] }
   })
@@ -149,6 +150,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
       const id = supplier.supplier_id || supplier.id
       const res = await api.get('/knowledge-base/' + id)
       setKb(res.data)
+      setDraftSeed(res.data.draft_seed || null)
       setStep('view')
       loadProductImages(id)
       loadFieldNotes(id)
@@ -359,10 +361,12 @@ export default function KnowledgeBase({ session }: { session: Session }) {
     try {
       const res = await api.post('/stratalyst/' + kb.supplier_id + '/deep-scan', {})
       setDeepScanResult(res.data)
-      setKb((prev: any) => ({
-        ...prev,
-        intelligence_depth: { scores: {}, total: res.data.depth_after },
-      }))
+      // Reload full KB so draft_seed (and any other new fields) are reflected
+      const fresh = await api.get('/knowledge-base/' + kb.supplier_id)
+      setKb(fresh.data)
+      if (fresh.data.draft_seed && !fresh.data.manual_seed?.product_plain) {
+        setDraftSeed(fresh.data.draft_seed)
+      }
       loadSuppliers()
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Deep scan failed')
@@ -410,6 +414,16 @@ export default function KnowledgeBase({ session }: { session: Session }) {
     setSeedBuyerType(seed.buyer_type || '')
     setSeedUseCase(seed.use_case || '')
     setSeedNotThis(seed.not_this || '')
+    setEditingSeed(true)
+  }
+
+  function acceptDraftSeed() {
+    if (!draftSeed) return
+    setSeedProductPlain(draftSeed.product_plain || '')
+    setSeedBuyerType(draftSeed.buyer_type || '')
+    setSeedUseCase(draftSeed.use_case || '')
+    setSeedNotThis(draftSeed.not_this || '')
+    setDraftSeed(null)
     setEditingSeed(true)
   }
 
@@ -615,6 +629,47 @@ export default function KnowledgeBase({ session }: { session: Session }) {
               className="w-full px-4 py-3 rounded-lg text-sm outline-none"
               style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }} />
           </div>
+
+          {/* STRATALYST Draft Seed proposal — shown when scan proposes but no seed confirmed yet */}
+          {draftSeed && !kb?.manual_seed?.product_plain && (
+            <div className="p-5 rounded-xl space-y-3"
+                 style={{ background: '#1c1400', border: '1px solid #92400e' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: '#f59e0b' }}>
+                    ⚡ STRATALYST — Draft Agent Definition
+                  </div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>
+                    Proposed from your website scan. Review, edit if needed, then save.
+                  </div>
+                </div>
+                <button onClick={() => setDraftSeed(null)}
+                        className="text-xs px-2 py-1 rounded"
+                        style={{ color: 'var(--stratagent-muted)', background: 'var(--stratagent-dark)' }}>
+                  Dismiss
+                </button>
+              </div>
+              <div className="space-y-2 text-xs" style={{ color: 'var(--stratagent-text)' }}>
+                {[
+                  ['What it sells', draftSeed.product_plain],
+                  ['Who buys it', draftSeed.buyer_type],
+                  ['Used for', draftSeed.use_case],
+                  ['NOT this', draftSeed.not_this],
+                ].map(([label, val]) => val ? (
+                  <div key={label}>
+                    <span className="font-semibold" style={{ color: '#f59e0b' }}>{label}: </span>
+                    {val}
+                  </div>
+                ) : null)}
+              </div>
+              <button
+                onClick={acceptDraftSeed}
+                className="text-xs px-4 py-2 rounded-lg font-semibold"
+                style={{ background: '#f59e0b', color: '#000' }}>
+                Review &amp; Confirm →
+              </button>
+            </div>
+          )}
 
           {/* Agent Definition — manual seed */}
           <div className="pt-2 pb-1">

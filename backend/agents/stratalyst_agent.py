@@ -605,3 +605,59 @@ async def crawl_supplier_website(
         "pages_crawled": len(to_crawl),
         "urls": to_crawl,
     }
+
+
+async def propose_seed_from_profile(
+    company_name: str,
+    profile: dict,
+    website_url: str = None,
+) -> dict:
+    """
+    After a deep scan, propose a draft Manual Seed from the enriched profile.
+    Returns {product_plain, buyer_type, use_case, not_this} — all plain English.
+    Jason confirms, edits, or rejects in the KB Agent Definition panel.
+    """
+    profile_summary = _summarise_profile(profile)
+
+    prompt = f"""
+You have just crawled the website and enriched the Knowledge Base for the company:
+**{company_name}**
+{"Website: " + website_url if website_url else ""}
+
+ENRICHED PROFILE SUMMARY:
+{profile_summary}
+
+Your task: propose a Manual Seed — a short, plain-English anchor that prevents AI
+from misidentifying what this company sells. This will be reviewed and confirmed by
+the operator before use.
+
+RULES:
+- product_plain: What does this company literally sell? One or two sentences. No marketing language.
+  Describe the physical product or service in the plainest possible terms.
+- buyer_type: Who are the actual buyers? Job titles or company types.
+- use_case: What do buyers use it for? One sentence, literal.
+- not_this: What could someone mistake this for? Name the most likely misclassification
+  and explicitly rule it out. This field is critical.
+
+Return JSON only:
+{{
+  "product_plain": "...",
+  "buyer_type": "...",
+  "use_case": "...",
+  "not_this": "..."
+}}
+"""
+    from services.gemini import generate
+    import json, re
+    response = await generate(prompt, temperature=0.2)
+    try:
+        cleaned = re.sub(r"```(?:json)?\n?", "", response).strip()
+        result = json.loads(cleaned)
+        return {
+            "product_plain": str(result.get("product_plain", "")),
+            "buyer_type": str(result.get("buyer_type", "")),
+            "use_case": str(result.get("use_case", "")),
+            "not_this": str(result.get("not_this", "")),
+        }
+    except Exception:
+        return {}

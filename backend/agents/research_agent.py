@@ -195,3 +195,11 @@ Rules:
             profile["approach_window"] = None
 
     return profile
+
+
+async def find_alternative_prospects(kb: dict, company_name: str) -> list:
+    """
+    Suggest alternative prospect companies when CI < 60.
+    Stub — returns empty list. Full implementation: STRATAGORA phase.
+    """
+    return []

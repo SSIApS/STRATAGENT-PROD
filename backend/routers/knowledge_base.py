@@ -273,7 +273,7 @@ async def update_website_url(
 async def _bg_deep_scan(supplier_id: str, website_url: str):
     """Background deep scan — triggered automatically when website URL is set."""
     try:
-        from agents.stratalyst_agent import crawl_supplier_website
+        from agents.stratalyst_agent import crawl_supplier_website, propose_seed_from_profile
         from agents.extraction_agent import score_intelligence_depth
         crawl_result = await crawl_supplier_website(website_url, supplier_id, max_pages=14)
         crawled_profile = crawl_result.get("profile", {})
@@ -297,6 +297,15 @@ async def _bg_deep_scan(supplier_id: str, website_url: str):
             "intelligence_depth": {"scores": scores, "total": total},
             "documents": kb.get("documents", []) + crawl_result.get("urls", []),
         })
+        # Propose a draft seed if none is set yet
+        if not kb.get("manual_seed", {}).get("product_plain"):
+            draft = await propose_seed_from_profile(
+                company_name=kb["company_name"],
+                profile=profile,
+                website_url=website_url,
+            )
+            if draft.get("product_plain"):
+                db.save_knowledge_base(supplier_id, {"draft_seed": draft})
     except Exception:
         pass
 
@@ -413,55 +422,3 @@ async def get_product_image(supplier_id: str, image_id: str):
     return img
 
 
-def _threshold_label(total: float) -> dict:
-    if total >= 90:
-        return {"label": "SINGULARITY READY", "level": 4, "can_propose": True}
-    if total >= 80:
-        return {"label": "PROPOSAL READY", "level": 3, "can_propose": True}
-    if total >= 50:
-        return {"label": "VALUE BRIEF READY", "level": 2, "can_propose": False}
-    return {"label": "INTELLIGENCE GAP", "level": 1, "can_propose": False}
-
-
-def _newly_unlocked(old_total: float, new_total: float):
-    thresholds = [(90, "SINGULARITY READY"), (80, "PROPOSAL READY"), (50, "VALUE BRIEF READY")]
-    for threshold, label in thresholds:
-        if old_total < threshold <= new_total:
-            return f"New threshold reached: {label}"
-    return None
-
-
-def _identify_gaps(scores: dict) -> list:
-    WEIGHTS = {
-        "product_catalogue": 20, "technical_datasheets": 15, "certifications": 10,
-        "case_studies": 20, "competitive_positioning": 10, "pricing_framework": 8,
-        "distribution_channels": 12, "reference_projects": 10, "objections_responses": 5,
-    }
-    gaps = []
-    for key, weight in WEIGHTS.items():
-        score = scores.get(key, 0)
-        if score < weight * 0.6:
-            gaps.append({
-                "element": key,
-                "label": key.replace("_", " ").title(),
-                "current": round(score, 1),
-                "target": weight,
-                "impact": f"Adding this would unlock {weight - score:.0f} more depth points",
-            })
-    return sorted(gaps, key=lambda x: x["target"] - x["current"], reverse=True)
-
-
-def _check_monitored_positions(supplier_id: str, scores: dict, total: float):
-    try:
-        positions = db.get_monitored_positions(supplier_id)
-        for p in positions:
-            trigger = p.get("trigger", {})
-            if trigger.get("type") == "threshold":
-                threshold_val = float(trigger.get("value", 60))
-                if total >= threshold_val:
-                    db.surface_monitored_position(
-                        p["id"],
-                        f"KB reached {round(total)} depth -- threshold {threshold_val} met"
-                    )
-    except Exception:
-        pass

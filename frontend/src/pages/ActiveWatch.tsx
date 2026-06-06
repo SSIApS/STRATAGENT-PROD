@@ -13,7 +13,7 @@ const TRIGGER_COLOUR: Record<string, string> = {
 const TRIGGER_LABEL: Record<string, string> = {
   time:      'TIME',
   event:     'EVENT',
-  threshold: 'CI THRESHOLD',
+  threshold: 'SD THRESHOLD',
   document:  'DOCUMENT',
 }
 
@@ -372,7 +372,7 @@ export default function ActiveWatch({ session }: { session: Session }) {
           <div className="text-4xl mb-3">{'◎'}</div>
           <div>No positions in Active Watch.</div>
           <div className="mt-1 text-xs">
-            Prospects with CI below 60 are automatically parked here from Field Intelligence.
+            Prospects with SD below 60 are automatically parked here from Field Intelligence.
           </div>
         </div>
       )}

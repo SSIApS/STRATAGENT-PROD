@@ -42,10 +42,11 @@ export default function ConvergenceIndex({
         <div>
           <div className="text-xs uppercase tracking-widest mb-1"
                style={{ color: 'var(--stratagent-muted)' }}>
-            Convergence Index — {company}
+            Singularity Density — {company}
           </div>
-          <div className="text-4xl font-black" style={{ color }}>
-            {score}
+          <div className="flex items-end gap-2">
+            <div className="text-4xl font-black" style={{ color }}>{score}</div>
+            <div className="text-sm font-bold mb-1" style={{ color: 'var(--stratagent-muted)' }}>SD</div>
           </div>
         </div>
         <div className="text-right">

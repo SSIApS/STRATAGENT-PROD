@@ -43,3 +43,186 @@ body {
 .convergence-ready {
   animation: convergence-pulse 2s ease-in-out infinite;
 }
+
+/* ── Print / Save as PDF ────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 18mm 20mm 18mm 20mm;
+  }
+
+  /* Hide everything except the print zone */
+  body * { visibility: hidden; }
+  .stratagent-print-zone,
+  .stratagent-print-zone * { visibility: visible; }
+
+  /* Print zone: absolute so multi-page content flows naturally. */
+  .stratagent-print-zone {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.6;
+    box-shadow: none !important;
+  }
+
+  /* Nuke all dark backgrounds and borders inside the zone */
+  .stratagent-print-zone div,
+  .stratagent-print-zone pre,
+  .stratagent-print-zone p,
+  .stratagent-print-zone span {
+    background: transparent !important;
+    background-color: transparent !important;
+    color: #111 !important;
+    border-color: #ccc !important;
+    box-shadow: none !important;
+  }
+
+  /* Pre blocks: clean bordered box, no dark bg.
+     Allow page breaks inside long content — orphans/widows control quality. */
+  .stratagent-print-zone pre {
+    border: 1px solid #ddd !important;
+    border-radius: 4px !important;
+    padding: 10pt 12pt !important;
+    font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif !important;
+    font-size: 10pt !important;
+    white-space: pre-wrap !important;
+    word-break: break-word;
+    page-break-inside: auto;
+    orphans: 5;
+    widows: 5;
+  }
+
+  /* Print header */
+  .stratagent-print-header {
+    border-bottom: 2px solid #e87a00 !important;
+    padding-bottom: 10pt;
+    margin-bottom: 16pt;
+    page-break-inside: avoid;
+  }
+  .stratagent-print-header h1 {
+    font-size: 17pt;
+    color: #e87a00 !important;
+    margin: 0 0 5pt 0;
+    font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif;
+    font-weight: bold;
+  }
+  .stratagent-print-header p {
+    font-size: 8.5pt;
+    color: #444 !important;
+    margin: 2pt 0 0 0;
+    font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif;
+  }
+
+  /* Sections: allow natural page breaks inside long sections.
+     Only keep heading glued to its first line of content. */
+  .stratagent-print-section {
+    page-break-inside: auto;
+    margin-bottom: 14pt;
+  }
+
+  /* Section headings — never orphaned at page bottom.
+     The adjacent sibling rule keeps the heading glued to its first content block. */
+  .stratagent-print-section h2 {
+    font-size: 10pt;
+    color: #e87a00 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 16pt 0 5pt 0;
+    font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif;
+    font-weight: bold;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Keep first content block on same page as its heading */
+  .stratagent-print-section h2 + pre,
+  .stratagent-print-section h2 + p,
+  .stratagent-print-section h2 + div {
+    page-break-before: avoid;
+    break-before: avoid;
+  }
+
+  /* Screen-only labels hidden when printing */
+  .stratagent-print-section > div.print\:hidden { display: none !important; }
+
+  /* Qualifying questions list */
+  .stratagent-print-section ol {
+    margin: 0 0 10pt 0;
+    padding-left: 18pt;
+    page-break-inside: avoid;
+  }
+  .stratagent-print-section ol li {
+    font-size: 10pt;
+    color: #111 !important;
+    margin-bottom: 5pt;
+    font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Screen-only question tiles hidden when printing */
+  .stratagent-print-section .space-y-2 { display: none !important; }
+
+  /* Footer — flows at the end of the last page. No fixed positioning.
+     Chrome's print engine cannot reliably repeat fixed footers without overlap. */
+  .stratagent-print-footer {
+    border-top: 2px solid #e87a00 !important;
+    margin-top: 24pt !important;
+    padding-top: 10pt !important;
+    page-break-inside: avoid;
+  }
+  .stratagent-print-footer-inner {
+    display: flex !important;
+    align-items: center !important;
+    gap: 14pt;
+  }
+  .stratagent-print-footer-logo {
+    height: 24pt !important;
+    width: auto !important;
+    flex-shrink: 0;
+    display: block !important;
+    visibility: visible !important;
+  }
+  .stratagent-print-footer-divider {
+    width: 1pt;
+    height: 28pt;
+    background: #ddd !important;
+    flex-shrink: 0;
+  }
+  .stratagent-print-footer-text {
+    flex: 1;
+    font-size: 7.5pt;
+    color: #555 !important;
+    font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif;
+    line-height: 1.5;
+  }
+  .stratagent-print-footer-text div {
+    color: #555 !important;
+    background: transparent !important;
+  }
+
+  /* Page number — top right of every page via CSS counter */
+  .stratagent-print-zone::before {
+    content: none;
+  }
+  @page {
+    @top-right {
+      content: "Page " counter(page);
+      font-family: 'Century Gothic', CenturyGothic, 'Trebuchet MS', sans-serif;
+      font-size: 8pt;
+      color: #888;
+    }
+  }
+
+  /* Hide screen-only controls */
+  .print\:hidden { display: none !important; }
+}

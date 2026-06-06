@@ -46,7 +46,7 @@ export default function OutputEngine({ session }: { session: Session }) {
           {loading ? 'Generating intelligence package...' : 'Generate Output'}
         </button>
         <p className="mt-4 text-xs" style={{ color: 'var(--stratagent-muted)' }}>
-          Output path determined by Convergence Index
+          Output path determined by Singularity Density (SD)
         </p>
       </div>
     )
@@ -72,7 +72,7 @@ export default function OutputEngine({ session }: { session: Session }) {
             {output.company_name}
           </h2>
           <div className="text-sm mt-1" style={{ color: 'var(--stratagent-muted)' }}>
-            Convergence Index: <span style={{ color: 'var(--stratagent-gold)' }}>{output.convergence_index}</span>
+            SD: <span style={{ color: 'var(--stratagent-gold)' }}>{output.convergence_index}</span>
           </div>
         </div>
       </div>

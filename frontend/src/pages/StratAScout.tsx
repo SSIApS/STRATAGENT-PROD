@@ -32,7 +32,7 @@ function CIBadge({ score }: { score: number }) {
   return (
     <span className="text-xs font-bold px-2 py-0.5 rounded-full"
           style={{ background: color + '22', color, border: `1px solid ${color}44` }}>
-      ~{score} CI
+      ~{score} SD
     </span>
   )
 }
@@ -66,6 +66,12 @@ function ProspectCard({ p, onPromote, onDismiss, onPark }: {
                     style={{ background: confColor + '22', color: confColor, fontSize: '10px', fontWeight: 700 }}>
                 {p.confidence}
               </span>
+              {p.supplier_name && (
+                <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
+                      style={{ background: 'var(--stratagent-gold-dim)', color: 'var(--stratagent-gold)', fontSize: '10px' }}>
+                  {p.supplier_name}
+                </span>
+              )}
             </div>
             <p className="text-xs mt-1" style={{ color: 'var(--stratagent-muted)' }}>
               {p.industry}
@@ -173,6 +179,7 @@ export default function StratAScout({ session }: { session: Session }) {
   const abortRef = useRef<AbortController | null>(null)
   const [pool, setPool] = useState<any[]>([])
   const [poolLoading, setPoolLoading] = useState(false)
+  const [poolSupplierFilter, setPoolSupplierFilter] = useState('')
   const [lastHunt, setLastHunt] = useState<any>(null)
   const [activeTab, setActiveTab] = useState<'hunt'|'pool'>('hunt')
   const navigate = useNavigate()
@@ -190,10 +197,13 @@ export default function StratAScout({ session }: { session: Session }) {
     loadPool()
   }, [])
 
-  async function loadPool() {
+  async function loadPool(filterSupplierId?: string) {
     setPoolLoading(true)
     try {
-      const res = await api.get('/stratascout/pool', { params: { status: 'new' } })
+      const params: any = { status: 'new' }
+      const sid = filterSupplierId !== undefined ? filterSupplierId : poolSupplierFilter
+      if (sid) params.supplier_id = sid
+      const res = await api.get('/stratascout/pool', { params })
       setPool(res.data || [])
     } catch { }
     finally { setPoolLoading(false) }
@@ -413,6 +423,37 @@ export default function StratAScout({ session }: { session: Session }) {
 
       {activeTab === 'pool' && (
         <div className="space-y-3">
+
+          {/* Supplier filter */}
+          {suppliers.length > 1 && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>Filter by supplier:</span>
+              <select
+                value={poolSupplierFilter}
+                onChange={e => {
+                  setPoolSupplierFilter(e.target.value)
+                  loadPool(e.target.value)
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg"
+                style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }}>
+                <option value="">All suppliers</option>
+                {suppliers.map(s => (
+                  <option key={s.supplier_id || s.id} value={s.supplier_id || s.id}>
+                    {s.company_name}
+                  </option>
+                ))}
+              </select>
+              {poolSupplierFilter && (
+                <button
+                  onClick={() => { setPoolSupplierFilter(''); loadPool('') }}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ color: 'var(--stratagent-gold)', background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+
           {poolLoading ? (
             <div className="text-center py-12 text-sm" style={{ color: 'var(--stratagent-muted)' }}>
               Loading pool...

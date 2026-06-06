@@ -79,7 +79,7 @@ function TopCallCard({ call, idx, navigate }: { call: any; idx: number; navigate
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
-            CI {call.ci}
+            SD {call.ci}
           </span>
           <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
                 style={{ background: urgencyColour + '22', color: urgencyColour }}>

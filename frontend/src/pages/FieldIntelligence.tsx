@@ -100,6 +100,7 @@ export default function FieldIntelligence({ session }: { session: Session }) {
   const [result, setResult] = useState<any>(null)
   const [outputLoading, setOutputLoading] = useState(false)
   const [outputResult, setOutputResult] = useState<any>(null)
+  const [exportLoading, setExportLoading] = useState(false)
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
@@ -175,6 +176,48 @@ export default function FieldIntelligence({ session }: { session: Session }) {
       alert(e.response?.data?.detail?.message || e.response?.data?.detail || 'Output generation failed')
     } finally {
       setOutputLoading(false)
+    }
+  }
+
+  async function exportBrief() {
+    if (!outputResult) return
+    setExportLoading(true)
+    try {
+      const res = await api.post(
+        '/output/export',
+        {
+          profile_id: result?.profile_id || '',
+          label: outputResult.label,
+          company_name: outputResult.company_name,
+          convergence_index: outputResult.convergence_index,
+          supplier_name: selectedSupplier?.company_name || '',
+          output: outputResult.output,
+        },
+        { responseType: 'blob' }
+      )
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const link = document.createElement('a')
+      link.href = url
+      const cd = res.headers['content-disposition'] || ''
+      const match = cd.match(/filename="?([^"]+)"?/)
+      link.download = match ? match[1] : `STRATAGENT_${outputResult.company_name}.docx`
+      link.click()
+      window.URL.revokeObjectURL(url)
+    } catch (e: any) {
+      // When responseType:'blob', error body is a Blob — read it to show real message
+      if (e.response?.data instanceof Blob) {
+        const text = await e.response.data.text()
+        try {
+          const json = JSON.parse(text)
+          alert('Export failed: ' + (json.detail || text))
+        } catch {
+          alert('Export failed: ' + text)
+        }
+      } else {
+        alert('Export failed: ' + (e.response?.data?.detail || e.message || 'unknown error'))
+      }
+    } finally {
+      setExportLoading(false)
     }
   }
 
@@ -369,9 +412,11 @@ export default function FieldIntelligence({ session }: { session: Session }) {
 
           {/* Output result panel */}
           {outputResult && (
-            <div className="p-6 rounded-xl space-y-5"
+            <div className="stratagent-print-zone p-6 rounded-xl space-y-5"
                  style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-gold-dim)' }}>
-              <div className="flex items-center justify-between">
+
+              {/* Screen header — hidden on print (print-header takes over) */}
+              <div className="flex items-center justify-between print:hidden">
                 <div className="text-xs uppercase tracking-widest" style={{ color: 'var(--stratagent-gold)' }}>
                   {outputResult.label}
                 </div>
@@ -383,9 +428,22 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 </button>
               </div>
 
+              {/* Print header — only visible when printing */}
+              <div className="stratagent-print-header">
+                <h1>{outputResult.label}</h1>
+                <p>
+                  Prospect: {outputResult.company_name} &nbsp;|&nbsp;
+                  Supplier: {selectedSupplier?.company_name || ''} &nbsp;|&nbsp;
+                  SD: {outputResult.convergence_index}/100 &nbsp;|&nbsp;
+                  {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+                <p>Prepared by: Jason L. Smith | Strategic Sales International ApS | jls@strategic.dk</p>
+              </div>
+
               {outputResult.output?.email && (
-                <div>
-                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--stratagent-gold)' }}>Outreach Email</div>
+                <div className="stratagent-print-section">
+                  <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Outreach Email</div>
+                  <h2>Outreach Email</h2>
                   <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
                        style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
                     {outputResult.output.email}
@@ -394,8 +452,9 @@ export default function FieldIntelligence({ session }: { session: Session }) {
               )}
 
               {outputResult.output?.brief && (
-                <div>
-                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--stratagent-gold)' }}>Value Brief</div>
+                <div className="stratagent-print-section">
+                  <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Value Brief</div>
+                  <h2>Value Brief</h2>
                   <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
                        style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
                     {outputResult.output.brief}
@@ -404,8 +463,9 @@ export default function FieldIntelligence({ session }: { session: Session }) {
               )}
 
               {outputResult.output?.proposal && (
-                <div>
-                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--stratagent-gold)' }}>Technical Proposal</div>
+                <div className="stratagent-print-section">
+                  <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Technical Proposal</div>
+                  <h2>Technical Proposal</h2>
                   <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
                        style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
                     {outputResult.output.proposal}
@@ -414,8 +474,9 @@ export default function FieldIntelligence({ session }: { session: Session }) {
               )}
 
               {outputResult.output?.engagement_brief && (
-                <div>
-                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--stratagent-gold)' }}>Engagement Brief / RFQ</div>
+                <div className="stratagent-print-section">
+                  <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Engagement Brief / RFQ</div>
+                  <h2>Engagement Brief / RFQ Framework</h2>
                   <pre className="text-sm whitespace-pre-wrap rounded-lg p-4 select-all"
                        style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)', fontFamily: 'inherit' }}>
                     {outputResult.output.engagement_brief}
@@ -424,8 +485,9 @@ export default function FieldIntelligence({ session }: { session: Session }) {
               )}
 
               {outputResult.output?.qualifying_questions?.length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--stratagent-gold)' }}>Qualifying Questions</div>
+                <div className="stratagent-print-section">
+                  <div className="text-xs font-semibold mb-2 print:hidden" style={{ color: 'var(--stratagent-gold)' }}>Qualifying Questions</div>
+                  <h2>Qualifying Questions</h2>
                   <div className="space-y-2">
                     {outputResult.output.qualifying_questions.map((q: string, i: number) => (
                       <div key={i} className="text-sm px-4 py-2 rounded-lg"
@@ -434,15 +496,54 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                       </div>
                     ))}
                   </div>
+                  <ol className="stratagent-print-section" style={{ display: 'none' }}>
+                    {outputResult.output.qualifying_questions.map((q: string, i: number) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ol>
                 </div>
               )}
 
-              <button
-                onClick={generateOutput}
-                className="text-xs px-3 py-1.5 rounded font-semibold"
-                style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-gold)' }}>
-                Regenerate
-              </button>
+              {/* Print footer */}
+              <div className="stratagent-print-footer">
+                <div className="stratagent-print-footer-inner">
+                  <img src="/stratagent-logo-standard.png" alt="STRATAGENT" className="stratagent-print-footer-logo" style={{ height: '28px', width: 'auto' }} />
+                  <div className="stratagent-print-footer-divider" />
+                  <div className="stratagent-print-footer-text">
+                    <div>Jason L. Smith &nbsp;·&nbsp; Strategic Sales International ApS &nbsp;·&nbsp; info@strategic.dk &nbsp;·&nbsp; www.strategic-dk.com &nbsp;·&nbsp; +45 24 99 23 93</div>
+                    <div>CVR: 41945621 &nbsp;·&nbsp; Roskilde, Denmark &nbsp;·&nbsp; STRATAGENT — The Intelligence Behind Agentic Sales &nbsp;·&nbsp; Confidential</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 print:hidden">
+                <button
+                  onClick={generateOutput}
+                  className="text-xs px-3 py-1.5 rounded font-semibold"
+                  style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-gold)' }}>
+                  Regenerate
+                </button>
+                <button
+                  onClick={() => {
+                    const supplier = selectedSupplier?.company_name || 'SSI'
+                    const prospect = outputResult.company_name || 'Prospect'
+                    const label = outputResult.label || 'BRIEF'
+                    const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                    const prev = document.title
+                    document.title = `STRATAGENT — ${supplier} → ${prospect} — ${label} — ${dateStr}`
+                    window.print()
+                    document.title = prev
+                  }}
+                  className="text-xs px-3 py-1.5 rounded font-semibold flex items-center gap-1.5"
+                  style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 6 2 18 2 18 9"/>
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                    <rect x="6" y="14" width="12" height="8"/>
+                  </svg>
+                  Print / Save PDF
+                </button>
+              </div>
             </div>
           )}
 
@@ -476,7 +577,7 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 <div className="text-sm" style={{ color: 'var(--stratagent-text)' }}>
                   {result.profile.decision_maker.name} -- {result.profile.decision_maker.title}
                   {result.profile.decision_maker.linkedin && (
-                    <a href={result.profile.decision_maker.linkedin}
+                    <a href={result.profile.decision_maker.linkedin.startsWith('http') ? result.profile.decision_maker.linkedin : 'https://' + result.profile.decision_maker.linkedin}
                        target="_blank" rel="noreferrer"
                        className="ml-2 underline"
                        style={{ color: 'var(--stratagent-blue)' }}>

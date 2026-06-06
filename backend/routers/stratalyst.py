@@ -400,8 +400,25 @@ async def deep_scan_website(
         "documents": kb.get("documents", []) + crawl_result.get("urls", []),
     })
 
+    # Propose a draft seed if none is set yet
+    draft_proposed = False
+    if not kb.get("manual_seed", {}).get("product_plain"):
+        try:
+            from agents.stratalyst_agent import propose_seed_from_profile
+            draft = await propose_seed_from_profile(
+                company_name=kb["company_name"],
+                profile=merged,
+                website_url=website_url,
+            )
+            if draft.get("product_plain"):
+                db.save_knowledge_base(supplier_id, {"draft_seed": draft})
+                draft_proposed = True
+        except Exception:
+            pass
+
     return {
         "status": "complete",
+        "draft_seed_proposed": draft_proposed,
         "pages_crawled": pages_crawled,
         "fields_improved": fields_improved,
         "depth_before": round(old_total, 1),
@@ -410,13 +427,3 @@ async def deep_scan_website(
         "threshold_status": _threshold_label(total),
         "urls_crawled": crawl_result.get("urls", []),
     }
-
-
-def _threshold_label(total: float) -> dict:
-    if total >= 90:
-        return {"label": "SINGULARITY READY", "color": "green"}
-    if total >= 80:
-        return {"label": "PROPOSAL READY", "color": "green"}
-    if total >= 50:
-        return {"label": "VALUE BRIEF READY", "color": "amber"}
-    return {"label": "INTELLIGENCE GAP", "color": "red"}
