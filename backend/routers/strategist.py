@@ -51,12 +51,20 @@ async def generate_monday_brief(x_session_id: str = Header(...)):
     watched = db.list_all_monitored_positions(include_dismissed=False)
     outcomes = db.list_all_outcomes(limit=30)
 
+    # Pull STRATAGORA market signals if available
+    market_signals = db.get_recent_signals_for_strategist(days=30)
+
     pipeline_data = {
         "kbs": kbs,
         "profiles": profiles,
         "watched": watched,
         "outcomes": outcomes,
+        "market_signals": market_signals,
     }
 
     brief = await generate_brief(pipeline_data)
-    return {"brief": brief, "generated_at": __import__("time").time()}
+    return {
+        "brief": brief,
+        "generated_at": __import__("time").time(),
+        "market_signals_count": len(market_signals),
+    }

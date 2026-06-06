@@ -34,6 +34,7 @@ async def generate_brief(pipeline_data: dict) -> dict:
     profiles = pipeline_data.get("profiles", [])
     watched = pipeline_data.get("watched", [])
     outcomes = pipeline_data.get("outcomes", [])
+    market_signals = pipeline_data.get("market_signals", [])
 
     # Build structured context
     kb_summary = []
@@ -98,6 +99,9 @@ Analyze this cross-pipeline snapshot and produce a structured JSON brief.
 ## WEAK KNOWLEDGE BASES (limit pipeline quality)
 {json.dumps(weak_kbs, indent=2)}
 
+## STRATAGORA MARKET INTELLIGENCE (last 30 days)
+{json.dumps([{{"sector": s.get("sector_label"), "signal_type": s.get("signal_type"), "headline": s.get("headline"), "relevance_score": s.get("relevance_score"), "affected_suppliers": s.get("affected_suppliers", []), "action_owner": s.get("action_owner")}} for s in market_signals[:8]], indent=2) if market_signals else "No market signals available — run STRATAGORA scan to populate."}
+
 Produce a JSON object with this exact structure:
 {{
   "week_headline": "One punchy sentence summarising the pipeline state this week",
@@ -132,7 +136,12 @@ Produce a JSON object with this exact structure:
   }},
   "watch_alerts": [
     "One sentence per surfaced or time-due position"
-  ]
+  ],
+  "market_intelligence": {{
+    "active_sectors": ["sector names with signals this week"],
+    "top_market_signal": "The single most actionable market signal — name sector, signal type, and what it means for the pipeline",
+    "stratagora_recommendation": "What action should STRATASCOUT or STRATADAR take based on market signals? Or null if no signals."
+  }}
 }}
 
 Rules:

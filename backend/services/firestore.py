@@ -291,6 +291,53 @@ def list_prospect_pool(supplier_id: str = None, status: str = None) -> list:
     return docs
 
 
+# -- MARKET INTELLIGENCE (STRATAGORA) --
+
+def save_market_signal(signal_id: str, data: dict) -> str:
+    """Save a STRATAGORA market intelligence signal."""
+    db.collection("market_intelligence").document(signal_id).set(
+        {**data, "scanned_at": time.time()}, merge=True
+    )
+    return signal_id
+
+
+def list_market_signals(sector: str = None, limit: int = 50, active_only: bool = True) -> list:
+    """List market intelligence signals, newest first."""
+    docs = db.collection("market_intelligence").stream()
+    results = [{"id": d.id, **d.to_dict()} for d in docs]
+    if sector:
+        results = [r for r in results if r.get("sector") == sector]
+    if active_only:
+        now = time.time()
+        results = [r for r in results if r.get("expires_at", now + 1) > now]
+    results.sort(key=lambda x: x.get("scanned_at", 0), reverse=True)
+    return results[:limit]
+
+
+def get_recent_signals_for_strategist(days: int = 30) -> list:
+    """Return high-relevance signals from the last N days for the Monday Brief."""
+    cutoff = time.time() - (days * 86400)
+    docs = db.collection("market_intelligence").stream()
+    results = [{"id": d.id, **d.to_dict()} for d in docs]
+    results = [
+        r for r in results
+        if r.get("scanned_at", 0) >= cutoff
+        and r.get("relevance_score", 0) >= 50
+        and r.get("expires_at", cutoff + 1) > time.time()
+    ]
+    results.sort(key=lambda x: (-x.get("relevance_score", 0), -x.get("scanned_at", 0)))
+    return results[:20]
+
+
+def clear_expired_signals():
+    """Delete signals past their expiry date."""
+    now = time.time()
+    for doc in db.collection("market_intelligence").stream():
+        data = doc.to_dict()
+        if data.get("expires_at", now + 1) <= now:
+            doc.reference.delete()
+
+
 # -- STORAGE STATS --
 
 def _doc_size_bytes(data: dict) -> int:

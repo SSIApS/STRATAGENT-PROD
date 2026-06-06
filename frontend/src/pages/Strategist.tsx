@@ -153,6 +153,8 @@ export default function Strategist({ session }: { session: Session }) {
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generatedAt, setGeneratedAt] = useState<number | null>(null)
+  const [stratagora, setStratagora] = useState<any>(null)
+  const [stratagScanning, setStratagScanning] = useState(false)
   const navigate = useNavigate()
 
   setSession(session.sessionId)
@@ -181,6 +183,20 @@ export default function Strategist({ session }: { session: Session }) {
       alert(e.response?.data?.detail || 'Brief generation failed')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  async function scanMarkets() {
+    setStratagScanning(true)
+    try {
+      const res = await api.post('/stratagora/scan', { geography: 'Denmark, Scandinavia, Northern Europe' })
+      // After scan, load the summary
+      const sum = await api.get('/stratagora/signals/summary')
+      setStratagora(sum.data)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'STRATAGORA scan failed')
+    } finally {
+      setStratagScanning(false)
     }
   }
 
@@ -243,6 +259,78 @@ export default function Strategist({ session }: { session: Session }) {
           ))}
         </div>
       )}
+
+      {/* STRATAGORA Market Intelligence Panel */}
+      <div className="mb-6 p-5 rounded-xl"
+           style={{ background: 'var(--stratagent-panel)', border: '1px solid #10b98133' }}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-mono px-2 py-0.5 rounded"
+                    style={{ background: '#10b98122', color: '#10b981', border: '1px solid #10b98144' }}>
+                STRATAGORA
+              </span>
+              <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>Market Intelligence</span>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+              {stratagora
+                ? stratagora.signal_count + ' signals active across ' + stratagora.sectors_active + ' sectors'
+                : 'Scan your markets to surface signals that feed STRATASCOUT and STRATADAR'}
+            </p>
+          </div>
+          <button
+            onClick={scanMarkets}
+            disabled={stratagScanning}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+            style={{ background: '#10b981', color: '#000' }}>
+            {stratagScanning ? (
+              <>
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 14 14">
+                  <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="20" strokeDashoffset="5" />
+                </svg>
+                Scanning...
+              </>
+            ) : '⧡ Scan Markets'}
+          </button>
+        </div>
+
+        {stratagora?.brief && (
+          <div className="text-xs p-3 rounded-lg mb-3"
+               style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-text)', border: '1px solid var(--stratagent-border)' }}>
+            {stratagora.brief}
+          </div>
+        )}
+
+        {stratagora?.top_signals?.length > 0 && (
+          <div className="space-y-2">
+            {stratagora.top_signals.slice(0, 4).map((sig: any, i: number) => {
+              const typeColour: Record<string, string> = {
+                CAPEX: '#f59e0b', TENDER: '#0ea5e9', REGULATORY: '#ef4444',
+                SECTOR_TREND: '#10b981', LEADERSHIP_CHANGE: '#7c3aed',
+                STRATEGIC_SHIFT: '#f97316', NEWS_EVENT: '#64748b',
+              }
+              const col = typeColour[sig.signal_type] || '#64748b'
+              return (
+                <div key={i} className="p-3 rounded-lg"
+                     style={{ background: 'var(--stratagent-dark)', border: '1px solid ' + col + '33' }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold px-1.5 py-0.5 rounded"
+                          style={{ background: col + '22', color: col }}>{sig.signal_type}</span>
+                    <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>{sig.sector_label}</span>
+                    <span className="ml-auto text-xs font-mono" style={{ color: col }}>{sig.relevance_score}</span>
+                  </div>
+                  <div className="text-xs font-semibold mb-0.5" style={{ color: 'var(--stratagent-text)' }}>{sig.headline}</div>
+                  {sig.affected_suppliers?.length > 0 && (
+                    <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                      Relevant for: {sig.affected_suppliers.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Empty state — no brief yet */}
       {!brief && !generating && (
@@ -351,6 +439,40 @@ export default function Strategist({ session }: { session: Session }) {
                   {alert}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* STRATAGORA Market Intelligence */}
+          {brief.market_intelligence && (
+            <div className="p-5 rounded-xl space-y-3"
+                 style={{ background: 'var(--stratagent-panel)', border: '1px solid #10b98144' }}>
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-mono uppercase tracking-widest" style={{ color: '#10b981' }}>
+                  STRATAGORA Market Intelligence
+                </div>
+                {brief.market_intelligence.active_sectors?.length > 0 && (
+                  <div className="flex gap-1 flex-wrap">
+                    {brief.market_intelligence.active_sectors.slice(0, 3).map((s: string, i: number) => (
+                      <span key={i} className="text-xs px-1.5 py-0.5 rounded"
+                            style={{ background: '#10b98122', color: '#10b981', border: '1px solid #10b98133' }}>
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {brief.market_intelligence.top_market_signal && (
+                <div className="text-sm" style={{ color: 'var(--stratagent-text)' }}>
+                  {brief.market_intelligence.top_market_signal}
+                </div>
+              )}
+              {brief.market_intelligence.stratagora_recommendation && (
+                <div className="flex gap-2 text-xs p-3 rounded-lg"
+                     style={{ background: '#10b98111', color: '#10b981', border: '1px solid #10b98133' }}>
+                  <span>→</span>
+                  <span>{brief.market_intelligence.stratagora_recommendation}</span>
+                </div>
+              )}
             </div>
           )}
 
