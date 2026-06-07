@@ -338,6 +338,24 @@ def clear_expired_signals():
             doc.reference.delete()
 
 
+# -- STRATEGIST BRIEFS --
+
+def save_strategist_brief(brief: dict, generated_at: float, doc_path: str = "") -> None:
+    """Save the latest STRATEGIST brief to Firestore for persistence across app restarts."""
+    db.collection("strategist_briefs").document("latest").set({
+        "brief": brief,
+        "generated_at": generated_at,
+        "doc_path": doc_path,
+        "saved_at": time.time(),
+    })
+
+
+def get_latest_strategist_brief() -> Optional[dict]:
+    """Return the stored STRATEGIST brief, or None if not found."""
+    doc = db.collection("strategist_briefs").document("latest").get()
+    return doc.to_dict() if doc.exists else None
+
+
 # -- STORAGE STATS --
 
 def _doc_size_bytes(data: dict) -> int:

@@ -155,11 +155,45 @@ export default function Strategist({ session }: { session: Session }) {
   const [generatedAt, setGeneratedAt] = useState<number | null>(null)
   const [stratagora, setStratagora] = useState<any>(null)
   const [stratagScanning, setStratagScanning] = useState(false)
+  const [docReady, setDocReady] = useState(false)
+  const [notification, setNotification] = useState<string | null>(null)
   const navigate = useNavigate()
 
   setSession(session.sessionId)
 
-  useEffect(() => { loadSnapshot() }, [])
+  useEffect(() => {
+    loadSnapshot()
+    loadStoredBrief()
+  }, [])
+
+  async function loadStoredBrief() {
+    // Load from Firestore first (survives app restarts)
+    try {
+      const res = await api.get('/strategist/latest-brief')
+      if (res.data.brief) {
+        setBrief(res.data.brief)
+        setGeneratedAt(res.data.generated_at)
+        setDocReady(!!res.data.doc_path)
+        return
+      }
+    } catch { /* fall through to localStorage */ }
+    // Fallback: localStorage
+    try {
+      const saved = localStorage.getItem('stratagent_brief')
+      const savedAt = localStorage.getItem('stratagent_brief_at')
+      if (saved) {
+        setBrief(JSON.parse(saved))
+        if (savedAt) setGeneratedAt(parseFloat(savedAt))
+      }
+    } catch { /* ignore */ }
+  }
+
+  function clearBrief() {
+    setBrief(null)
+    setGeneratedAt(null)
+    localStorage.removeItem('stratagent_brief')
+    localStorage.removeItem('stratagent_brief_at')
+  }
 
   async function loadSnapshot() {
     setLoading(true)
@@ -173,28 +207,46 @@ export default function Strategist({ session }: { session: Session }) {
     }
   }
 
-  async function generateBrief() {
+  async function generateBrief(silent = false) {
     setGenerating(true)
     try {
       const res = await api.post('/strategist/brief')
       setBrief(res.data.brief)
       setGeneratedAt(res.data.generated_at)
+      setDocReady(!!res.data.doc_ready)
+      localStorage.setItem('stratagent_brief', JSON.stringify(res.data.brief))
+      localStorage.setItem('stratagent_brief_at', String(res.data.generated_at))
+      if (silent || res.data.doc_ready) {
+        setNotification(res.data.doc_ready
+          ? '✓ Monday Brief ready — Word document saved to docs/Briefs/'
+          : '✓ Monday Brief generated')
+        setTimeout(() => setNotification(null), 8000)
+      }
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Brief generation failed')
+      if (!silent) alert(e.response?.data?.detail || 'Brief generation failed')
     } finally {
       setGenerating(false)
     }
   }
+
+  // Auto-trigger on Monday if brief is older than 6 days
+  useEffect(() => {
+    if (generating || brief) return
+    const isMonday = new Date().getDay() === 1
+    if (isMonday) generateBrief(true)
+  }, [snapshot])
 
   async function scanMarkets() {
     setStratagScanning(true)
     try {
       const res = await api.post('/stratagora/scan', { geography: 'Denmark, Scandinavia, Northern Europe' })
       // After scan, load the summary
-      const sum = await api.get('/stratagora/signals/summary')
+      const sum = await api.get('/stratagora/summary')
       setStratagora(sum.data)
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'STRATAGORA scan failed')
+      const status = e.response?.status ?? 'no response'
+      const detail = e.response?.data?.detail ?? e.message ?? 'unknown'
+      alert(`STRATAGORA scan failed\nHTTP ${status}: ${typeof detail === 'object' ? JSON.stringify(detail) : detail}`)
     } finally {
       setStratagScanning(false)
     }
@@ -206,6 +258,15 @@ export default function Strategist({ session }: { session: Session }) {
 
   return (
     <div className="max-w-4xl mx-auto">
+
+      {/* Notification banner */}
+      {notification && (
+        <div className="mb-4 px-4 py-3 rounded-xl flex items-center justify-between"
+             style={{ background: '#10b98122', border: '1px solid #10b98144', color: '#10b981' }}>
+          <span className="text-sm font-semibold">{notification}</span>
+          <button onClick={() => setNotification(null)} className="text-xs opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
@@ -227,13 +288,32 @@ export default function Strategist({ session }: { session: Session }) {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <button
-            onClick={generateBrief}
-            disabled={generating || loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-            style={{ background: generating ? '#1e1e1e' : 'var(--stratagent-gold)', color: generating ? 'var(--stratagent-text)' : '#000' }}>
-            {generating ? 'Generating brief…' : brief ? '↻ Refresh Brief' : '▶ Generate Brief'}
-          </button>
+          <div className="flex items-center gap-2">
+            {brief && !generating && (
+              <>
+                <a
+                  href="http://127.0.0.1:9000/api/strategist/download-brief"
+                  download
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold"
+                  style={{ background: docReady ? 'var(--stratagent-gold)' : 'var(--stratagent-panel)', color: docReady ? '#000' : 'var(--stratagent-muted)', border: '1px solid var(--stratagent-border)', textDecoration: 'none' }}>
+                  ⬇ {docReady ? 'Download Brief' : 'Export'}
+                </a>
+                <button
+                  onClick={clearBrief}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold"
+                  style={{ background: 'var(--stratagent-panel)', color: 'var(--stratagent-muted)', border: '1px solid var(--stratagent-border)' }}>
+                  ✕ Clear
+                </button>
+              </>
+            )}
+            <button
+              onClick={generateBrief}
+              disabled={generating || loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+              style={{ background: generating ? '#1e1e1e' : 'var(--stratagent-gold)', color: generating ? 'var(--stratagent-text)' : '#000' }}>
+              {generating ? 'Generating brief…' : brief ? '↻ Refresh Brief' : '▶ Generate Brief'}
+            </button>
+          </div>
           {generatedTime && (
             <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
               Generated {generatedTime}
