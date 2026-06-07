@@ -1,5 +1,5 @@
 """
-STRATAGENT — STRATEGIST Router
+STRATAGENT -- STRATEGIST Router
 Cross-pipeline AI advisor. Monday Brief + Top 3 Actions.
 """
 from fastapi import APIRouter, Header
@@ -14,7 +14,7 @@ router = APIRouter()
 async def get_pipeline_snapshot():
     """
     Aggregate cross-module data for the STRATEGIST.
-    No AI calls — just data collection. Fast.
+    No AI calls -- just data collection. Fast.
     """
     kbs = db.list_knowledge_bases()
     profiles = db.list_all_relationship_profiles(limit=100)
@@ -62,7 +62,23 @@ async def generate_monday_brief(x_session_id: str = Header(...)):
         "market_signals": market_signals,
     }
 
-    brief = await generate_brief(pipeline_data)
+    try:
+        brief = await generate_brief(pipeline_data)
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print("STRATEGIST BRIEF ERROR:\n", tb)
+        brief = {
+            "week_headline": f"Brief generation failed: {str(e)[:120]}",
+            "pipeline_score": 0,
+            "pipeline_score_reasoning": "Gemini API error -- retry in a few minutes.",
+            "top_calls": [],
+            "top_3_actions": [],
+            "what_changed": [],
+            "kb_health": {"strongest": "", "weakest": "", "fix_first": "Retry the brief after 2-3 minutes."},
+            "watch_alerts": [],
+            "market_intelligence": {"active_sectors": [], "top_market_signal": None, "stratagora_recommendation": None},
+        }
     return {
         "brief": brief,
         "generated_at": __import__("time").time(),

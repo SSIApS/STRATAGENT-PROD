@@ -1,13 +1,13 @@
 """
-STRATAGENT — STRATEGIST Agent
+STRATAGENT -- STRATEGIST Agent
 Cross-pipeline AI advisor. Reads all modules and produces:
-  1. Monday Brief — who to call, what changed, pipeline health
-  2. Top 3 Actions — prioritised tasks for right now
+  1. Monday Brief -- who to call, what changed, pipeline health
+  2. Top 3 Actions -- prioritised tasks for right now
 """
 import json
 import re
 import time
-from services.gemini import generate_with_grounding
+from services.gemini import generate
 from services import firestore as db
 
 
@@ -79,8 +79,38 @@ async def generate_brief(pipeline_data: dict) -> dict:
     # Weak KBs (depth < 50, no seed)
     weak_kbs = [kb for kb in kb_summary if kb["depth"] < 50 or not kb["has_seed"]]
 
+    # Pre-compute JSON strings -- avoids f-string double-brace set confusion
+    surfaced_json = json.dumps(
+        [{"company": w.get("company_name"), "reason": w.get("surfaced_reason", "")} for w in surfaced],
+        indent=2
+    )
+    time_due_json = json.dumps(
+        [{"company": w.get("company_name"), "trigger": w.get("trigger", {})} for w in time_due],
+        indent=2
+    )
+    if market_signals:
+        market_signals_json = json.dumps(
+            [{"sector": s.get("sector_label"), "signal_type": s.get("signal_type"),
+              "headline": s.get("headline"), "relevance_score": s.get("relevance_score"),
+              "affected_suppliers": s.get("affected_suppliers", []),
+              "action_owner": s.get("action_owner")} for s in market_signals[:8]],
+            indent=2
+        )
+    else:
+        market_signals_json = "No market signals available -- run STRATAGORA scan to populate."
+
     prompt = f"""
-You are STRATEGIST, the AI advisor for a solopreneur B2B sales operation.
+You are STRATEGIST, the AI advisor for a solopreneur B2B sales operation run by Jason Smith at Strategic Sales International ApS (SSI), Denmark.
+
+CRITICAL RULES FOR THIS BRIEF:
+- Use ONLY the company names and CI scores from the data provided below. DO NOT invent companies or scores.
+- Every recommendation must name a specific company, cite its CI, and reference a real signal or KB gap.
+- "Week headline" must be a single punchy sentence that names the single most important thing to do THIS week.
+- top_calls must be prospects Jason can actually call THIS week - cite WHY NOW with a specific signal or trigger.
+- top_3_actions must be concrete tasks (e.g. "Run STRATALYST deep scan on Becker Insulation to push depth from 58 to 70+") not generic advice.
+- pipeline_score must reflect REALITY: if no prospects are above CI 75, score cannot exceed 60. If KBs are weak, penalise.
+- If STRATAGORA market signals are present, the single most actionable one MUST appear in top_3_actions.
+- If STRATAGORA is empty, Action 3 should be "Run STRATAGORA market scan to identify sector signals".
 
 Analyze this cross-pipeline snapshot and produce a structured JSON brief.
 
@@ -90,17 +120,17 @@ Analyze this cross-pipeline snapshot and produce a structured JSON brief.
 ## ACTIVE PROSPECTS (by Convergence Index)
 {json.dumps(prospect_summary[:15], indent=2)}
 
-## ACTIVE WATCH — SURFACED TRIGGERS
-{json.dumps([{{"company": w.get("company_name"), "reason": w.get("surfaced_reason", "")}} for w in surfaced], indent=2)}
+## ACTIVE WATCH -- SURFACED TRIGGERS
+{surfaced_json}
 
 ## TIME-DUE WATCH POSITIONS
-{json.dumps([{{"company": w.get("company_name"), "trigger": w.get("trigger", {{}})}} for w in time_due], indent=2)}
+{time_due_json}
 
 ## WEAK KNOWLEDGE BASES (limit pipeline quality)
 {json.dumps(weak_kbs, indent=2)}
 
 ## STRATAGORA MARKET INTELLIGENCE (last 30 days)
-{json.dumps([{{"sector": s.get("sector_label"), "signal_type": s.get("signal_type"), "headline": s.get("headline"), "relevance_score": s.get("relevance_score"), "affected_suppliers": s.get("affected_suppliers", []), "action_owner": s.get("action_owner")}} for s in market_signals[:8]], indent=2) if market_signals else "No market signals available — run STRATAGORA scan to populate."}
+{market_signals_json}
 
 Produce a JSON object with this exact structure:
 {{
@@ -112,7 +142,7 @@ Produce a JSON object with this exact structure:
       "company": "company name",
       "supplier": "supplier name",
       "ci": <number>,
-      "why_now": "One sentence — the specific reason to call this week",
+      "why_now": "One sentence -- the specific reason to call this week",
       "opening_line": "Suggested conversation opener",
       "urgency": "HIGH|MEDIUM|LOW"
     }}
@@ -139,7 +169,7 @@ Produce a JSON object with this exact structure:
   ],
   "market_intelligence": {{
     "active_sectors": ["sector names with signals this week"],
-    "top_market_signal": "The single most actionable market signal — name sector, signal type, and what it means for the pipeline",
+    "top_market_signal": "The single most actionable market signal -- name sector, signal type, and what it means for the pipeline",
     "stratagora_recommendation": "What action should STRATASCOUT or STRATADAR take based on market signals? Or null if no signals."
   }}
 }}
@@ -148,25 +178,39 @@ Rules:
 - top_calls: rank the 3-5 best prospects to contact THIS WEEK (CI 60+, or time-due watches, or surfaced signals)
 - top_3_actions: exactly 3 actions, ordered by leverage. Action 1 should have the highest ROI per minute.
 - what_changed: list anything notable (surfaced signals, prospects hitting thresholds, KB gains)
-- Be concrete — name companies, cite CIs, reference signals. No generic advice.
+- Be concrete -- name companies, cite CIs, reference signals. No generic advice.
 - If no prospects have CI 60+, flag it and recommend STRATALYST runs or STRATASCOUT hunt.
 
 Respond with only the JSON object.
 """
 
-    response = await generate_with_grounding(prompt)
+    response = await generate(prompt, temperature=0.2)
 
-    # Parse JSON
+    # Parse JSON -- strip fencing Gemini may wrap around the output
     try:
-        # Strip markdown code fences if present
         text = response.strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```[a-z]*\n?", "", text)
-            text = re.sub(r"\n?```$", "", text)
+        # Strip opening fences (backtick, single-quote, double-quote variants)
+        for fence in ["```json", "```", "'''json", "'''", '"""json', '"""']:
+            if text.startswith(fence):
+                text = text[len(fence):].lstrip()
+                break
+        # Strip closing fences
+        for fence in ["```", "'''", '"""']:
+            if text.rstrip().endswith(fence):
+                text = text.rstrip()[:-3].rstrip()
+                break
+        # Extract first { to last } as safety net
+        start = text.find("{")
+        end   = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            text = text[start:end]
+        print("STRATEGIST JSON length:", len(text), "| preview:", text[:80])
         return json.loads(text)
-    except Exception:
+    except Exception as parse_err:
+        print("STRATEGIST JSON parse FAILED:", parse_err)
+        print("STRATEGIST raw response:", response[:400])
         return {
-            "week_headline": "Brief generation failed — check pipeline data",
+            "week_headline": "Brief generation failed -- check pipeline data",
             "pipeline_score": 0,
             "pipeline_score_reasoning": response[:500],
             "top_calls": [],
@@ -174,4 +218,9 @@ Respond with only the JSON object.
             "what_changed": [],
             "kb_health": {"strongest": "", "weakest": "", "fix_first": ""},
             "watch_alerts": [],
+            "market_intelligence": {
+                "active_sectors": [],
+                "top_market_signal": None,
+                "stratagora_recommendation": None,
+            },
         }
