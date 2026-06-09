@@ -2,7 +2,7 @@
 STRATAGENT -- Field Intelligence Router
 Prospect research, Relationship Profiles, and Convergence Index.
 """
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Header
 from pydantic import BaseModel
 import time
 import uuid
@@ -11,6 +11,7 @@ from services import firestore as db
 from services.demo_gate import check_and_increment
 from agents.research_agent import research_prospect, find_alternative_prospects
 from agents.stratalink_agent import match_affiliates_to_prospect
+from agents.synergy_agent import cross_score_prospect
 
 router = APIRouter()
 
@@ -20,13 +21,35 @@ class ProspectResearchRequest(BaseModel):
     company_name: str
 
 
-async def _execute_research(supplier_id: str, company_name: str, x_session_id: str, queue_entry_id: str = None):
-    """Core research flow, shared by /research and the retry-queue endpoint.
+async def _run_synergy_check(profile_id: str, prospect_profile: dict, primary_supplier_id: str) -> None:
+    """Background task -- score the prospect against all other SSI suppliers."""
+    try:
+        all_kbs = db.list_knowledge_bases()
+        flags = await cross_score_prospect(
+            prospect_profile=prospect_profile,
+            primary_supplier_id=primary_supplier_id,
+            all_kbs=all_kbs,
+        )
+        db.save_synergy_matches(profile_id, {
+            "profile_id": profile_id,
+            "primary_supplier_id": primary_supplier_id,
+            "prospect_name": prospect_profile.get("company_name", ""),
+            "flags": flags,
+            "flag_count": len(flags),
+            "scored_at": time.time(),
+        })
+    except Exception:
+        pass  # Synergy check is non-blocking -- never fails the primary FI
 
-    On a Gemini/transient failure, instead of letting the exception bubble up
-    and lose the request, we persist it to the pending_research queue so the
-    user can retry with one click later -- nothing typed is lost.
-    """
+
+async def _execute_research(
+    supplier_id: str,
+    company_name: str,
+    x_session_id: str,
+    queue_entry_id: str = None,
+    background_tasks: BackgroundTasks = None,
+):
+    """Core research flow, shared by /research and the retry-queue endpoint."""
     kb = db.get_knowledge_base(supplier_id)
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge Base not found")
@@ -45,7 +68,6 @@ async def _execute_research(supplier_id: str, company_name: str, x_session_id: s
     try:
         profile = await research_prospect(company_name, kb)
     except Exception as e:
-        # Save (or update) the queue entry so this attempt isn't lost.
         entry_id = queue_entry_id or str(uuid.uuid4())
         existing = db.get_pending_research(entry_id) if queue_entry_id else None
         first_requested_at = existing.get("requested_at") if existing else None
@@ -60,8 +82,8 @@ async def _execute_research(supplier_id: str, company_name: str, x_session_id: s
         raise HTTPException(
             status_code=503,
             detail={
-                "message": "Research failed -- likely a temporary AI service overload (503 high demand). "
-                           "Your request has been saved to the Retry Queue below -- you can retry it with one click once things settle.",
+                "message": "Research failed -- likely a temporary AI service overload. "
+                           "Your request has been saved to the Retry Queue -- retry with one click once things settle.",
                 "queue_entry_id": entry_id,
                 "error": str(e),
             },
@@ -79,6 +101,11 @@ async def _execute_research(supplier_id: str, company_name: str, x_session_id: s
         "recommended_path": profile.get("recommended_path", "PARK"),
         "watch_status": "active" if score >= 60 else "monitoring",
     })
+
+    # STRATAMESH -- fire cross-supplier synergy check in background (non-blocking)
+    prospect_for_synergy = {**profile, "company_name": company_name}
+    if background_tasks:
+        background_tasks.add_task(_run_synergy_check, profile_id, prospect_for_synergy, supplier_id)
 
     # Success -- clear any queue entry for this attempt.
     if queue_entry_id:
@@ -105,7 +132,6 @@ async def _execute_research(supplier_id: str, company_name: str, x_session_id: s
         "adjacent_opportunities": adjacent_opportunities,
     }
 
-    # If below 60, add alternative suggestions -- profile is always shown in full
     if score < 60:
         try:
             alternatives = await find_alternative_prospects(kb, company_name)
@@ -125,35 +151,43 @@ async def _execute_research(supplier_id: str, company_name: str, x_session_id: s
 @router.post("/research")
 async def research(
     payload: ProspectResearchRequest,
+    background_tasks: BackgroundTasks,
     x_session_id: str = Header(...),
 ):
     """Research a prospect and produce a Relationship Profile with Convergence Index."""
     await check_and_increment(x_session_id)
-    return await _execute_research(payload.supplier_id, payload.company_name, x_session_id)
+    return await _execute_research(
+        payload.supplier_id, payload.company_name, x_session_id,
+        background_tasks=background_tasks,
+    )
 
 
 @router.get("/research-queue/{supplier_id}")
 async def get_research_queue(supplier_id: str):
-    """List failed/queued research attempts for a supplier -- nothing is lost on a 503."""
+    """List failed/queued research attempts for a supplier."""
     return db.list_pending_research(supplier_id)
 
 
 @router.post("/research-queue/{entry_id}/retry")
-async def retry_research_queue(entry_id: str, x_session_id: str = Header(...)):
-    """Retry a saved failed research attempt using its original supplier_id + company_name."""
+async def retry_research_queue(
+    entry_id: str,
+    background_tasks: BackgroundTasks,
+    x_session_id: str = Header(...),
+):
+    """Retry a saved failed research attempt."""
     entry = db.get_pending_research(entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Queue entry not found")
-
     await check_and_increment(x_session_id)
     return await _execute_research(
-        entry["supplier_id"], entry["company_name"], x_session_id, queue_entry_id=entry_id
+        entry["supplier_id"], entry["company_name"], x_session_id,
+        queue_entry_id=entry_id, background_tasks=background_tasks,
     )
 
 
 @router.delete("/research-queue/{entry_id}")
 async def dismiss_research_queue(entry_id: str):
-    """Remove a queue entry without retrying (e.g. no longer relevant)."""
+    """Remove a queue entry without retrying."""
     db.delete_pending_research(entry_id)
     return {"status": "dismissed", "id": entry_id}
 
@@ -169,3 +203,12 @@ async def get_profile(profile_id: str):
     if not profile:
         raise HTTPException(status_code=404, detail="Relationship Profile not found")
     return profile
+
+
+@router.get("/synergy/{profile_id}")
+async def get_synergy_flags(profile_id: str):
+    """Fetch STRATAMESH cross-supplier flags for a researched prospect."""
+    result = db.get_synergy_matches(profile_id)
+    if not result:
+        return {"profile_id": profile_id, "flags": [], "flag_count": 0, "status": "pending"}
+    return result

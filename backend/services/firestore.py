@@ -10,6 +10,7 @@ COLLECTIONS:
   demo_sessions/            -- Demo gate counters
   product_images/           -- Tagged product/brand images per supplier
   affiliate_research_runs/  -- STRATALINK saved searches + per-program selection flags
+  synergy_matches/          -- STRATAMESH cross-supplier flags keyed by profile_id
 """
 from google.cloud import firestore
 from typing import Optional
@@ -316,6 +317,20 @@ def list_affiliate_research_runs(category: str = None) -> list:
     docs = [{"id": d.id, **d.to_dict()} for d in query.stream()]
     docs.sort(key=lambda x: x.get("created_at", 0), reverse=True)
     return docs
+
+
+# -- STRATAMESH SYNERGY MATCHES --
+
+def save_synergy_matches(profile_id: str, data: dict) -> None:
+    """Store STRATAMESH cross-supplier flags for a researched prospect."""
+    db.collection("synergy_matches").document(profile_id).set(
+        {**data, "updated_at": time.time()}, merge=True
+    )
+
+def get_synergy_matches(profile_id: str) -> Optional[dict]:
+    """Retrieve STRATAMESH flags for a given profile_id."""
+    doc = db.collection("synergy_matches").document(profile_id).get()
+    return doc.to_dict() if doc.exists else None
 
 def update_research_run_program(run_id: str, program_id: str, updates: dict) -> Optional[dict]:
     """Patch a single program entry inside a saved research run (e.g. mark selected/dismissed)."""

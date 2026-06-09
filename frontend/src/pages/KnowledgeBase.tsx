@@ -968,9 +968,22 @@ export default function KnowledgeBase({ session }: { session: Session }) {
                 <button
                   onClick={buildSeed}
                   disabled={buildingSeed || !kb?.company_name}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40"
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-1.5"
                   style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
-                  {buildingSeed ? '⟳ Building...' : hasSeed ? '↻ Rebuild' : '⚡ Build Seed'}
+                  {buildingSeed ? (
+                    <>
+                      <span style={{
+                        display: 'inline-block',
+                        width: '10px', height: '10px',
+                        border: '2px solid #00000033',
+                        borderTopColor: '#000',
+                        borderRadius: '50%',
+                        animation: 'spin 0.7s linear infinite',
+                        flexShrink: 0,
+                      }} />
+                      Building...
+                    </>
+                  ) : hasSeed ? '↻ Rebuild' : '⚡ Build Seed'}
                 </button>
                 <button onClick={openSeedEditor}
                         className="text-xs px-3 py-1.5 rounded-lg"

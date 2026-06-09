@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 :root {
   --stratagent-dark: #0a0e1a;
   --stratagent-panel: #111827;

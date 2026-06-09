@@ -154,6 +154,8 @@ export default function FieldIntelligence({ session }: { session: Session }) {
   const [showProfilePicker, setShowProfilePicker] = useState(false)
   const [researchQueue, setResearchQueue] = useState<any[]>([])
   const [queueActionId, setQueueActionId] = useState<string | null>(null)
+  const [synergyFlags, setSynergyFlags] = useState<any[]>([])
+  const [synergyLoading, setSynergyLoading] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -342,19 +344,40 @@ export default function FieldIntelligence({ session }: { session: Session }) {
 
   async function research() {
     setLoading(true)
+    setSynergyFlags([])
     try {
       const res = await api.post('/field-intelligence/research', {
         supplier_id: supplierId,
         company_name: companyName,
       })
       setResult(res.data)
+      // STRATAMESH runs as a background task -- poll for results
+      if (res.data?.profile_id) pollSynergy(res.data.profile_id)
     } catch (e: any) {
       const detail = e.response?.data?.detail
       alert((detail && detail.message) || detail || 'Research failed')
-      // A 503 (AI overload) gets queued for retry server-side -- refresh so it shows up below.
       refreshResearchQueue()
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function pollSynergy(profileId: string, attempts = 0) {
+    if (attempts > 8) return  // Give up after ~40s
+    setSynergyLoading(true)
+    try {
+      const res = await api.get('/field-intelligence/synergy/' + profileId)
+      if (res.data?.flags?.length > 0) {
+        setSynergyFlags(res.data.flags)
+        setSynergyLoading(false)
+      } else if (res.data?.status === 'pending' || res.data?.flag_count === 0) {
+        // Still processing or genuinely no flags -- retry after delay
+        setTimeout(() => pollSynergy(profileId, attempts + 1), 5000)
+      } else {
+        setSynergyLoading(false)
+      }
+    } catch {
+      setSynergyLoading(false)
     }
   }
 
@@ -967,6 +990,75 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── STRATAMESH -- Cross-Supplier Synergy Flags ── */}
+          {(synergyLoading || synergyFlags.length > 0) && (
+            <div className="p-5 rounded-xl space-y-3"
+                 style={{ background: 'var(--stratagent-panel)', border: '1px solid #f59e0b33' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-widest font-semibold"
+                       style={{ color: 'var(--stratagent-gold)' }}>
+                    STRATAMESH — Cross-Supplier Opportunities
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>
+                    Other SSI suppliers who may also have a case with this prospect
+                  </p>
+                </div>
+                {synergyLoading && synergyFlags.length === 0 && (
+                  <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                    <span style={{
+                      display: 'inline-block', width: '10px', height: '10px',
+                      border: '2px solid #f59e0b33', borderTopColor: 'var(--stratagent-gold)',
+                      borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+                    }} />
+                    Scanning...
+                  </div>
+                )}
+                {synergyFlags.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded"
+                        style={{ background: '#1c140022', color: 'var(--stratagent-gold)', border: '1px solid #92400e' }}>
+                    {synergyFlags.length} match{synergyFlags.length !== 1 ? 'es' : ''}
+                  </span>
+                )}
+              </div>
+
+              {synergyFlags.map((flag: any, i: number) => {
+                const scoreColor = flag.score >= 70 ? '#22c55e' : flag.score >= 55 ? '#f59e0b' : '#94a3b8'
+                return (
+                  <div key={i} className="p-3 rounded-lg flex items-start justify-between gap-3"
+                       style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold" style={{ color: 'var(--stratagent-text)' }}>
+                          {flag.supplier_name}
+                        </span>
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                              style={{ background: scoreColor + '22', color: scoreColor, border: `1px solid ${scoreColor}44` }}>
+                          {flag.score}
+                        </span>
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--stratagent-text)' }}>
+                        {flag.rationale}
+                      </p>
+                      {flag.signal_hook && (
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>
+                          Hook: {flag.signal_hook}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      disabled
+                      title="Full cross-supplier brief — on request"
+                      className="text-xs px-2 py-1 rounded flex-shrink-0 opacity-40 cursor-not-allowed"
+                      style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                      Build Brief
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
 
