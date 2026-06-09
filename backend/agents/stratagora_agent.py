@@ -1,5 +1,5 @@
 """
-STRATAGENT — STRATAGORA Agent
+STRATAGENT -- STRATAGORA Agent
 Market intelligence layer. Watches sectors relevant to Jason's supplier portfolio
 and surfaces signals that feed STRATASCOUT, STRATADAR, and STRATEGIST.
 
@@ -10,7 +10,7 @@ Signal types (shared with Field Intelligence):
   STRATEGIC_SHIFT | NEWS_EVENT
 
 Signal flow:
-  STRATAGORA → Firestore market_intelligence
+  STRATAGORA -> Firestore market_intelligence
   STRATEGIST reads market_intelligence for Monday Brief context
   (STRATADAR + STRATASCOUT integration in WALK phase)
 """
@@ -25,7 +25,7 @@ from services import firestore as db
 
 
 # ---------------------------------------------------------------------------
-# Sector derivation — reads KBs to build watchlist
+# Sector derivation -- reads KBs to build watchlist
 # ---------------------------------------------------------------------------
 
 def _derive_sectors_from_kbs(kbs: list) -> list[dict]:
@@ -78,9 +78,9 @@ def _classify_sector(buyer_type: str, use_case: str, product: str) -> tuple[str,
     Map buyer_type + use_case text to a canonical sector.
     Returns (sector_key, sector_label).
     """
-    combined = (buyer_type + " " + use_case + " " + product).lower()
+    combined = (str(buyer_type) + " " + str(use_case) + " " + str(product)).lower()
 
-    if any(w in combined for w in ["biogas", "hydrogen", "co2", "co₂", "carbon capture", "electrolyser"]):
+    if any(w in combined for w in ["biogas", "hydrogen", "co2", "co2", "carbon capture", "electrolyser"]):
         return "green_energy", "Green Energy & Hydrogen"
     if any(w in combined for w in ["oil", "offshore", "gas plant", "refinery", "petroleum"]):
         return "oil_gas", "Oil, Gas & Offshore"
@@ -102,13 +102,14 @@ def _classify_sector(buyer_type: str, use_case: str, product: str) -> tuple[str,
         return "eco_consumables", "Eco-Friendly Consumables"
 
     # Default: use first meaningful words from buyer_type
-    label = buyer_type[:50].strip().title()
-    key   = re.sub(r'\W+', '_', buyer_type[:30].lower()).strip('_')
+    buyer_str = str(buyer_type)
+    label = buyer_str[:50].strip().title()
+    key   = re.sub(r'\W+', '_', buyer_str[:30].lower()).strip('_')
     return key or "general", label or "General Industrial"
 
 
 # ---------------------------------------------------------------------------
-# Market scan — one per sector
+# Market scan -- one per sector
 # ---------------------------------------------------------------------------
 
 async def scan_sector(sector: dict, geography: str = "Denmark, Scandinavia, Northern Europe") -> list[dict]:
@@ -121,7 +122,7 @@ async def scan_sector(sector: dict, geography: str = "Denmark, Scandinavia, Nort
 
     suppliers_str = ", ".join(sector["suppliers"]) if sector["suppliers"] else "Jason's suppliers"
 
-    prompt = f"""You are STRATAGORA — the market intelligence layer of STRATAGENT.
+    prompt = f"""You are STRATAGORA -- the market intelligence layer of STRATAGENT.
 Your mission: surface ACTIONABLE market signals in a specific sector that create sales opportunities.
 
 TODAY: {now_str}
@@ -131,20 +132,20 @@ SUPPLIERS WATCHING THIS SECTOR: {suppliers_str}
 BUYER TYPE: {sector["buyer_type"]}
 USE CASE: {sector["use_case"]}
 
-Search the web for current signals in this sector from {cutoff_year}–{datetime.now(timezone.utc).year}.
+Search the web for current signals in this sector from {cutoff_year}-{datetime.now(timezone.utc).year}.
 
 Look specifically for:
-1. CAPEX announcements — new facilities, expansions, capital investment programmes
-2. TENDER — active procurement notices, framework agreements being established
-3. REGULATORY — new compliance requirements, standards updates, deadlines approaching
-4. SECTOR_TREND — technology shifts, sustainability mandates, market consolidation
-5. LEADERSHIP_CHANGE — new procurement heads, operations directors, sustainability officers
-6. STRATEGIC_SHIFT — M&A, new market entry, partnerships that create procurement need
-7. NEWS_EVENT — major contracts awarded, facility inaugurations, policy announcements
+1. CAPEX announcements -- new facilities, expansions, capital investment programmes
+2. TENDER -- active procurement notices, framework agreements being established
+3. REGULATORY -- new compliance requirements, standards updates, deadlines approaching
+4. SECTOR_TREND -- technology shifts, sustainability mandates, market consolidation
+5. LEADERSHIP_CHANGE -- new procurement heads, operations directors, sustainability officers
+6. STRATEGIC_SHIFT -- M&A, new market entry, partnerships that create procurement need
+7. NEWS_EVENT -- major contracts awarded, facility inaugurations, policy announcements
 
 SIGNAL QUALITY RULES:
 - Every signal must be from {cutoff_year} or {datetime.now(timezone.utc).year}
-- Every signal must be specific — name the company, facility, amount, or regulation
+- Every signal must be specific -- name the company, facility, amount, or regulation
 - A "trend" signal must name at least one concrete example, not just describe a trend
 - Score relevance 0-100 based on: how directly does this create a buying opportunity for the named suppliers?
 
@@ -152,10 +153,10 @@ Return a JSON array of up to 8 signals:
 [
   {{
     "signal_type": "CAPEX|TENDER|REGULATORY|SECTOR_TREND|LEADERSHIP_CHANGE|STRATEGIC_SHIFT|NEWS_EVENT",
-    "headline": "One sentence — specific enough that Jason knows exactly what this is",
+    "headline": "One sentence -- specific enough that Jason knows exactly what this is",
     "detail": "2-3 sentences: what happened, why it matters, what buying opportunity it creates",
     "company_name": "company name or null if sector-wide",
-    "timing": "when this was reported or takes effect — must be {cutoff_year} or {datetime.now(timezone.utc).year}",
+    "timing": "when this was reported or takes effect -- must be {cutoff_year} or {datetime.now(timezone.utc).year}",
     "source_url": "URL where this was found, or null",
     "relevance_score": 0-100,
     "relevance_reason": "one sentence: why this is relevant to the named suppliers specifically",
@@ -220,35 +221,43 @@ async def run_full_scan(kbs: list, geography: str = "Denmark, Scandinavia, North
             "signals_found": 0,
             "signals_stored": 0,
             "sectors": [],
-            "error": "No sectors derived from KBs — ensure Manual Seeds are set",
+            "error": "No sectors derived from KBs -- ensure Manual Seeds are set",
         }
 
     # Clear expired signals before adding new ones
     db.clear_expired_signals()
 
-    # Scan each sector (sequential to avoid rate limits)
+    # Scan sectors in parallel with per-sector timeout
+    # Limit to 5 sectors max to stay within reasonable time budget
+    sectors = sectors[:5]
+
+    SECTOR_TIMEOUT = 50  # seconds per sector
+
+    async def scan_with_timeout(sector: dict) -> tuple[dict, list]:
+        try:
+            signals = await asyncio.wait_for(
+                scan_sector(sector, geography),
+                timeout=SECTOR_TIMEOUT
+            )
+            return sector, signals
+        except asyncio.TimeoutError:
+            return sector, []
+        except Exception as e:
+            return sector, []
+
+    results = await asyncio.gather(*[scan_with_timeout(s) for s in sectors])
+
     all_signals = []
     sector_summaries = []
-
-    for sector in sectors:
-        try:
-            signals = await scan_sector(sector, geography)
-            all_signals.extend(signals)
-            sector_summaries.append({
-                "sector":        sector["sector_key"],
-                "sector_label":  sector["sector_label"],
-                "suppliers":     sector["suppliers"],
-                "signals_found": len(signals),
-                "top_signal":    signals[0]["headline"] if signals else None,
-            })
-        except Exception as e:
-            sector_summaries.append({
-                "sector":        sector["sector_key"],
-                "sector_label":  sector["sector_label"],
-                "suppliers":     sector["suppliers"],
-                "signals_found": 0,
-                "error":         str(e),
-            })
+    for sector, signals in results:
+        all_signals.extend(signals)
+        sector_summaries.append({
+            "sector":        sector["sector_key"],
+            "sector_label":  sector["sector_label"],
+            "suppliers":     sector["suppliers"],
+            "signals_found": len(signals),
+            "top_signal":    signals[0]["headline"] if signals else None,
+        })
 
     # Store all signals in Firestore
     stored = 0
@@ -287,7 +296,7 @@ async def generate_sector_brief(signals: list) -> str:
         return ""
 
     signal_list = "\n".join([
-        f"- [{s.get('sector_label', '')} / {s.get('signal_type', '')}] {s.get('headline', '')} — {s.get('relevance_reason', '')}"
+        f"- [{s.get('sector_label', '')} / {s.get('signal_type', '')}] {s.get('headline', '')} -- {s.get('relevance_reason', '')}"
         for s in signals[:10]
     ])
 

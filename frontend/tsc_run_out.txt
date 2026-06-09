@@ -1,0 +1,4 @@
+src/App.tsx(36,6): error TS17008: JSX element 'Layout' has no corresponding closing tag.
+src/App.tsx(37,8): error TS17008: JSX element 'Routes' has no corresponding closing tag.
+src/App.tsx(41,98): error TS1005: '</' expected.
+src/App.tsx(41,98): error TS1005: '>' expected.

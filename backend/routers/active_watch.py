@@ -1,5 +1,5 @@
 """
-STRATAGENT — Active Watch Router
+STRATAGENT -- Active Watch Router
 Manages Monitored Positions and trigger-based opportunity surfacing.
 """
 from fastapi import APIRouter, HTTPException, Header
@@ -76,7 +76,7 @@ async def get_all_monitored_positions(include_dismissed: bool = False):
 
 @router.post("/scan-all")
 async def scan_all_positions(x_session_id: str = Header(...)):
-    """STRATADAR full scan — checks all event triggers across all suppliers."""
+    """STRATADAR full scan -- checks all event triggers across all suppliers."""
     await check_and_increment(x_session_id)
     positions = db.list_all_monitored_positions()
     result = await run_full_scan(positions)

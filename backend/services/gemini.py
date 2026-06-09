@@ -7,16 +7,43 @@ CRITICAL: client.models.generate_content() is synchronous.
 All calls run via asyncio.to_thread() so they never block the event loop.
 """
 import asyncio
+import time
 from functools import lru_cache
 from google import genai
 from google.genai import types
 from config import get_gemini_api_key, GEMINI_MODEL
+
+# Retry transient overload errors (503 UNAVAILABLE / high demand / rate limits)
+# before giving up. Exponential backoff: 2s, 4s, 8s.
+_RETRYABLE_MARKERS = ("503", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "high demand", "rate limit")
+_MAX_RETRIES = 3
+_BASE_DELAY_SECONDS = 2
 
 
 @lru_cache()
 def _get_client() -> genai.Client:
     """Create and cache the Gemini client."""
     return genai.Client(api_key=get_gemini_api_key())
+
+
+def _is_retryable(exc: Exception) -> bool:
+    msg = str(exc)
+    return any(marker in msg for marker in _RETRYABLE_MARKERS)
+
+
+def _call_with_retry(fn, *args, **kwargs):
+    """Run a sync Gemini call, retrying on transient overload with backoff."""
+    last_exc = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            last_exc = e
+            if attempt < _MAX_RETRIES and _is_retryable(e):
+                time.sleep(_BASE_DELAY_SECONDS * (2 ** attempt))
+                continue
+            raise
+    raise last_exc
 
 
 def _safe_text(response) -> str:
@@ -38,15 +65,19 @@ def _safe_text(response) -> str:
 def _generate_sync(prompt: str, temperature: float = 0.3) -> str:
     """Synchronous Gemini call -- must be called via asyncio.to_thread()."""
     client = _get_client()
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=_SYSTEM_PROMPT,
-            temperature=temperature,
-            max_output_tokens=8192,
-        ),
-    )
+
+    def _call():
+        return client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_SYSTEM_PROMPT,
+                temperature=temperature,
+                max_output_tokens=8192,
+            ),
+        )
+
+    response = _call_with_retry(_call)
     return _safe_text(response)
 
 
@@ -55,8 +86,8 @@ def _generate_grounded_sync(prompt: str) -> str:
     client = _get_client()
 
     # Try grounding with Google Search
-    try:
-        response = client.models.generate_content(
+    def _call():
+        return client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -66,6 +97,9 @@ def _generate_grounded_sync(prompt: str) -> str:
                 max_output_tokens=8192,
             ),
         )
+
+    try:
+        response = _call_with_retry(_call)
         text = _safe_text(response)
         if text:
             return text

@@ -100,19 +100,72 @@ async def research_category(
     count: int = 5,
     x_session_id: str = Header(...),
 ):
-    """Ask STRATALINK to research affiliate programs in a category."""
+    """Ask STRATALINK to research affiliate programs in a category, then save the
+    search and its results so nothing gets lost -- Jason can flag specific programs
+    for follow-up (registration, marketing plan) later instead of acting in the moment."""
     await check_and_increment(x_session_id)
 
     if category not in AFFILIATE_CATEGORIES and len(category) < 3:
         raise HTTPException(status_code=400, detail="Unknown category")
 
     programs = await research_affiliate_category(category, geography, min(count, 8))
-    return {
-        "category":  category,
-        "geography": geography,
-        "programs":  programs,
-        "count":     len(programs),
+
+    # Tag each program with a stable id + selection state so individual programs
+    # can be flagged for follow-up without re-running the search.
+    for p in programs:
+        p["program_id"] = str(uuid.uuid4())
+        p["selected"] = False
+        p["selection_status"] = "new"   # new | selected | dismissed
+
+    run_id = str(uuid.uuid4())
+    record = {
+        "run_id":     run_id,
+        "category":   category,
+        "geography":  geography,
+        "count":      len(programs),
+        "programs":   programs,
+        "created_at": time.time(),
     }
+    db.save_affiliate_research_run(run_id, record)
+
+    return record
+
+
+@router.get("/research-runs")
+async def list_research_runs(category: Optional[str] = None):
+    """List saved STRATALINK search runs, most recent first."""
+    return db.list_affiliate_research_runs(category=category)
+
+
+@router.get("/research-runs/{run_id}")
+async def get_research_run(run_id: str):
+    run = db.get_affiliate_research_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Research run not found")
+    return run
+
+
+class ProgramSelectionUpdate(BaseModel):
+    selection_status: str   # selected | dismissed | new
+    notes: Optional[str] = None
+
+
+@router.patch("/research-runs/{run_id}/programs/{program_id}")
+async def select_research_program(run_id: str, program_id: str, payload: ProgramSelectionUpdate):
+    """Flag a specific program from a saved search as selected (or dismissed) for
+    follow-up -- e.g. 'find the registration URL and sketch a content plan for this one'."""
+    if payload.selection_status not in ("selected", "dismissed", "new"):
+        raise HTTPException(status_code=400, detail="selection_status must be selected, dismissed, or new")
+    updates = {
+        "selection_status": payload.selection_status,
+        "selected": payload.selection_status == "selected",
+    }
+    if payload.notes is not None:
+        updates["notes"] = payload.notes
+    updated = db.update_research_run_program(run_id, program_id, updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Research run or program not found")
+    return updated
 
 
 @router.post("/evaluate")

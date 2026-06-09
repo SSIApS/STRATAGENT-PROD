@@ -1,5 +1,5 @@
 """
-STRATAGENT — STRATADAR Agent
+STRATAGENT -- STRATADAR Agent
 Cross-KB Active Watch monitor. Scans all Monitored Positions across all suppliers
 and surfaces triggers with priority scoring.
 """
@@ -9,7 +9,7 @@ from services import firestore as db
 
 
 PRIORITY_RULES = {
-    "surfaced": 100,   # Already fired — show first
+    "surfaced": 100,   # Already fired -- show first
     "time_due": 80,    # Time trigger overdue
     "event": 60,       # Event trigger (needs Gemini scan)
     "threshold": 40,   # Waiting for CI threshold

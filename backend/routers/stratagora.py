@@ -1,10 +1,10 @@
 """
-STRATAGENT — STRATAGORA Router
+STRATAGENT -- STRATAGORA Router
 Market intelligence endpoints.
 
-POST /api/stratagora/scan          — trigger full market scan
-GET  /api/stratagora/signals       — list stored signals
-GET  /api/stratagora/signals/summary — summary for STRATEGIST
+POST /api/stratagora/scan          -- trigger full market scan
+GET  /api/stratagora/signals       -- list stored signals
+GET  /api/stratagora/signals/summary -- summary for STRATEGIST
 """
 from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel
@@ -19,6 +19,12 @@ router = APIRouter()
 
 class ScanRequest(BaseModel):
     geography: Optional[str] = "Denmark, Scandinavia, Northern Europe"
+
+
+@router.get("/ping")
+async def ping():
+    """Instant health check -- no Gemini, no Firestore. Proves router loaded."""
+    return {"status": "STRATAGORA router OK", "message": "Router is loaded and reachable."}
 
 
 @router.post("/scan")
@@ -55,7 +61,7 @@ async def get_signals(
     }
 
 
-@router.get("/signals/summary")
+@router.get("/summary")
 async def get_signals_summary(
     x_session_id: str = Header(...),
 ):

@@ -1,0 +1,8 @@
+src/App.tsx(28,32): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/Strategist.tsx(310,15): error TS2322: Type '(silent?: boolean) => Promise<void>' is not assignable to type 'MouseEventHandler<HTMLButtonElement>'.
+  Types of parameters 'silent' and 'event' are incompatible.
+    Type 'MouseEvent<HTMLButtonElement, MouseEvent>' is not assignable to type 'boolean | undefined'.
+src/pages/Strategist.tsx(428,13): error TS2322: Type '(silent?: boolean) => Promise<void>' is not assignable to type 'MouseEventHandler<HTMLButtonElement>'.
+  Types of parameters 'silent' and 'event' are incompatible.
+    Type 'MouseEvent<HTMLButtonElement, MouseEvent>' is not assignable to type 'boolean | undefined'.
+src/services/api.ts(3,30): error TS2339: Property 'env' does not exist on type 'ImportMeta'.

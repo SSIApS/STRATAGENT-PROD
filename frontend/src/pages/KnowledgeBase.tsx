@@ -1066,7 +1066,14 @@ export default function KnowledgeBase({ session }: { session: Session }) {
                   </div>
                 ))}
                 {syncResult.errors?.length > 0 && (
-                  <div style={{ color: '#ef4444' }}>{syncResult.errors.length} error(s) -- check filenames</div>
+                  <div className="space-y-0.5 mt-1">
+                    <div style={{ color: '#ef4444' }}>{syncResult.errors.length} file{syncResult.errors.length !== 1 ? 's' : ''} could not be synced:</div>
+                    {syncResult.errors.map((e: any, i: number) => (
+                      <div key={i} style={{ color: '#ef4444' }} className="pl-2">
+                        {e.file}: {e.error}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </>
             )}

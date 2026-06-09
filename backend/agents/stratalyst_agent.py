@@ -1,9 +1,9 @@
 """
-STRATAGENT — STRATALYST Agent
+STRATAGENT -- STRATALYST Agent
 Proactively enriches supplier Knowledge Bases by finding intelligence gaps
 and searching the web for sources that fill them.
 
-All search configuration lives in stratalyst_config.py — update that file
+All search configuration lives in stratalyst_config.py -- update that file
 during improvement sprints, no changes needed here.
 
 Flow:
@@ -58,7 +58,7 @@ SUPPLIER: {company_name}{website_hint}
 CURRENT INTELLIGENCE SUMMARY:
 {current_summary}
 
-GAPS TO FILL — SEARCH DIRECTIVES:
+GAPS TO FILL -- SEARCH DIRECTIVES:
 {search_directives}
 
 AVAILABLE SOURCE TYPES:
@@ -75,7 +75,7 @@ Return a JSON object:
       "title": "page or document title",
       "source_type": "one of the source type keys listed above",
       "fills_gaps": ["element_key1", "element_key2"],
-      "what_it_contains": "one specific sentence — what intelligence this URL provides for this supplier",
+      "what_it_contains": "one specific sentence -- what intelligence this URL provides for this supplier",
       "confidence": "high|medium|low"
     }}
   ],
@@ -85,7 +85,7 @@ Return a JSON object:
 
 Rules:
 - Only include URLs you are confident actually exist and are publicly accessible
-- Maximum 8 sources — quality over quantity
+- Maximum 8 sources -- quality over quantity
 - Each source must map to at least one gap element in fills_gaps
 - If you cannot find a credible source for a gap, list the element key in not_found
 - Return only the JSON object, no other text
@@ -224,7 +224,7 @@ Return a JSON object:
   "classification_reason": "one sentence explaining why",
   "elements": ["element_key1", "element_key2"],
   "headline": "10-word summary of the key insight",
-  "scorable_content": "the specific intelligence that should enrich the KB profile — rewritten cleanly for use in proposals and research. Null if not applicable.",
+  "scorable_content": "the specific intelligence that should enrich the KB profile -- rewritten cleanly for use in proposals and research. Null if not applicable.",
   "tags": ["tag1", "tag2"]
 }}
 
@@ -271,7 +271,7 @@ async def generate_interview_questions(
 You are STRATALYST preparing an interview with the account manager who knows {company_name} personally.
 
 INTELLIGENCE GAPS (what web search couldn't find):
-{chr(10).join(f"- {l}" for l in gap_labels) or "None — KB is well populated."}
+{chr(10).join(f"- {l}" for l in gap_labels) or "None -- KB is well populated."}
 
 HUMAN INTEL ALREADY CAPTURED:
 {chr(10).join(f"- {t}" for t in covered_topics) or "None yet."}
@@ -296,7 +296,7 @@ Return a JSON array:
   {{
     "question": "the question text",
     "element": "element_key this answer would fill",
-    "why_valuable": "one sentence — what this unlocks for sales strategy"
+    "why_valuable": "one sentence -- what this unlocks for sales strategy"
   }}
 ]
 
@@ -359,7 +359,7 @@ async def synthesise_profile(
         ("case_studies",            "What customer types, use cases, or deployment contexts are known?"),
         ("competitive_positioning", "What are the differentiators or competitive advantages?"),
         ("pricing_framework",       "What is known about pricing, volume tiers, or commercial terms?"),
-        ("distribution_channels",   "How does the supplier sell and deliver — direct, distributors, regions?"),
+        ("distribution_channels",   "How does the supplier sell and deliver -- direct, distributors, regions?"),
         ("reference_projects",      "What reference customers, installations, or projects are known?"),
         ("objections_responses",    "What common objections or questions arise, and how are they answered?"),
     ]
@@ -410,7 +410,7 @@ async def synthesise_profile(
 {existing_block}
 {trigger_block}
 
-Using ONLY the information above — no web search, no assumptions beyond what is stated — fill in as many of these thin fields as you can:
+Using ONLY the information above -- no web search, no assumptions beyond what is stated -- fill in as many of these thin fields as you can:
 
 {thin_block}
 
@@ -418,8 +418,8 @@ Rules:
 - Only use facts that can be directly inferred from the content above
 - If you cannot fill a field with real substance from the existing content, leave it empty ("")
 - Do not invent, assume, or hallucinate. Accuracy over completeness.
-- Keep each filled field concise but specific — 1-4 sentences
-- The seed definition is authoritative — do not contradict it
+- Keep each filled field concise but specific -- 1-4 sentences
+- The seed definition is authoritative -- do not contradict it
 
 Return a JSON object with only the fields you can genuinely fill:
 {{
@@ -530,7 +530,7 @@ async def crawl_supplier_website(
     4. Merges all extracted intelligence, longest wins per field
     5. Returns merged profile dict
 
-    This is the STRATALYST deep scan — runs automatically, no approval needed.
+    This is the STRATALYST deep scan -- runs automatically, no approval needed.
     """
     import asyncio
     import httpx
@@ -588,7 +588,7 @@ async def crawl_supplier_website(
 
     results = await asyncio.gather(*[safe_extract(url) for url in to_crawl])
 
-    # Step 4: merge — longest content wins per field
+    # Step 4: merge -- longest content wins per field
     merged: dict = {}
     for result in results:
         for key, value in result.items():
@@ -614,7 +614,7 @@ async def propose_seed_from_profile(
 ) -> dict:
     """
     After a deep scan, propose a draft Manual Seed from the enriched profile.
-    Returns {product_plain, buyer_type, use_case, not_this} — all plain English.
+    Returns {product_plain, buyer_type, use_case, not_this} -- all plain English.
     Jason confirms, edits, or rejects in the KB Agent Definition panel.
     """
     profile_summary = _summarise_profile(profile)
@@ -627,7 +627,7 @@ You have just crawled the website and enriched the Knowledge Base for the compan
 ENRICHED PROFILE SUMMARY:
 {profile_summary}
 
-Your task: propose a Manual Seed — a short, plain-English anchor that prevents AI
+Your task: propose a Manual Seed -- a short, plain-English anchor that prevents AI
 from misidentifying what this company sells. This will be reviewed and confirmed by
 the operator before use.
 

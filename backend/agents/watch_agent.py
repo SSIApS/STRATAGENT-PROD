@@ -1,5 +1,5 @@
 """
-STRATAGENT — Watch Agent
+STRATAGENT -- Watch Agent
 Scans Monitored Positions for trigger events using Gemini grounding.
 This is the agentic core of Active Watch.
 """

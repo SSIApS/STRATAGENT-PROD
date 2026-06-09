@@ -173,12 +173,24 @@ def _sd_label(score: int) -> str:
 # Main docx builder
 # ---------------------------------------------------------------------------
 
+def _signal_strength_color(strength: str) -> str:
+    """Map a buying-signal strength to a hex accent color for the docx."""
+    s = (strength or '').upper()
+    if s == 'HIGH':
+        return 'B23B00'
+    if s == 'MEDIUM':
+        return 'E87A00'
+    return '9A9A9A'
+
+
 def _build_docx(label: str, company_name: str, supplier_name: str,
-                convergence_index: int, output: dict) -> bytes:
+                convergence_index: int, output: dict,
+                buying_signals=None, score_reasoning=None,
+                what_would_improve=None) -> bytes:
     """Build a premium branded .docx from generated output."""
     try:
         from docx import Document
-        from docx.shared import Pt, RGBColor, Inches
+        from docx.shared import Pt, RGBColor, Inches, Mm
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
@@ -191,12 +203,15 @@ def _build_docx(label: str, company_name: str, supplier_name: str,
 
     doc = Document()
 
-    # Page margins
+    # Page setup -- A4, narrow margins (0.5in / ~1.27cm all round, matches Word's
+    # "Narrow" preset) so briefs print cleanly on A4 paper with maximum content area
     for sec in doc.sections:
-        sec.top_margin    = Inches(0.75)
-        sec.bottom_margin = Inches(0.85)
-        sec.left_margin   = Inches(1.0)
-        sec.right_margin  = Inches(1.0)
+        sec.page_width    = Mm(210)
+        sec.page_height   = Mm(297)
+        sec.top_margin    = Inches(0.5)
+        sec.bottom_margin = Inches(0.5)
+        sec.left_margin   = Inches(0.5)
+        sec.right_margin  = Inches(0.5)
 
     # ── COVER BLOCK ──────────────────────────────────────────────────────────
 
@@ -330,6 +345,103 @@ def _build_docx(label: str, company_name: str, supplier_name: str,
             p.add_run(str(q))
         doc.add_paragraph()
 
+    if buying_signals:
+        bs_tbl = doc.add_table(rows=1, cols=1)
+        bs_tbl.style = 'Table Grid'
+        bs_cell = bs_tbl.rows[0].cells[0]
+        _shade_cell(bs_cell, 'E87A00')
+        bs_p = bs_cell.paragraphs[0]
+        bs_p.clear()
+        bs_run = bs_p.add_run('BUYING SIGNALS DETECTED')
+        bs_run.bold = True; bs_run.font.size = Pt(10)
+        bs_run.font.color.rgb = WHITE_C
+
+        doc.add_paragraph()
+        for sig in buying_signals:
+            if not isinstance(sig, dict):
+                continue
+            sig_type = str(sig.get('type') or 'SIGNAL').upper()
+            strength = str(sig.get('strength') or '').upper()
+            description = sig.get('signal') or ''
+            timing = sig.get('timing')
+            source = sig.get('source')
+
+            head_p = doc.add_paragraph()
+            head_p.paragraph_format.space_before = Pt(6)
+            head_p.paragraph_format.space_after = Pt(1)
+            type_run = head_p.add_run(sig_type)
+            type_run.bold = True
+            type_run.font.size = Pt(9)
+            type_run.font.color.rgb = ORANGE_C
+            if strength:
+                head_p.add_run('   ')
+                strength_run = head_p.add_run(f'{strength} STRENGTH')
+                strength_run.bold = True
+                strength_run.font.size = Pt(8)
+                strength_run.font.color.rgb = RGBColor(*bytes.fromhex(_signal_strength_color(strength)))
+
+            if description:
+                body_p = doc.add_paragraph()
+                body_p.paragraph_format.left_indent = Inches(0.15)
+                body_p.paragraph_format.space_after = Pt(2)
+                body_p.add_run(str(description))
+
+            extra_bits = []
+            if timing:
+                extra_bits.append(f'Timing: {timing}')
+            if source:
+                extra_bits.append(f'Source: {source}')
+            if extra_bits:
+                meta_p = doc.add_paragraph()
+                meta_p.paragraph_format.left_indent = Inches(0.15)
+                meta_p.paragraph_format.space_after = Pt(4)
+                meta_run = meta_p.add_run('  |  '.join(extra_bits))
+                meta_run.italic = True
+                meta_run.font.size = Pt(8.5)
+                meta_run.font.color.rgb = RGBColor(0x6B, 0x6B, 0x6B)
+
+        doc.add_paragraph()
+        sep = doc.add_paragraph()
+        sep_run = sep.add_run('─' * 72)
+        sep_run.font.size = Pt(8)
+        sep_run.font.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
+        doc.add_paragraph()
+
+    if score_reasoning:
+        rs_tbl = doc.add_table(rows=1, cols=1)
+        rs_tbl.style = 'Table Grid'
+        rs_cell = rs_tbl.rows[0].cells[0]
+        _shade_cell(rs_cell, 'E87A00')
+        rs_p = rs_cell.paragraphs[0]
+        rs_p.clear()
+        rs_run = rs_p.add_run('WHY THIS SCORE -- SINGULARITY DENSITY REASONING')
+        rs_run.bold = True; rs_run.font.size = Pt(10)
+        rs_run.font.color.rgb = WHITE_C
+
+        doc.add_paragraph()
+        reason_p = doc.add_paragraph()
+        reason_p.paragraph_format.space_after = Pt(6)
+        reason_p.add_run(str(score_reasoning))
+
+        if what_would_improve:
+            imp_head = doc.add_paragraph()
+            imp_head.paragraph_format.space_before = Pt(4)
+            imp_head_run = imp_head.add_run('What would raise this score:')
+            imp_head_run.bold = True
+            imp_head_run.font.size = Pt(9.5)
+            imp_head_run.font.color.rgb = ORANGE_C
+
+            imp_p = doc.add_paragraph()
+            imp_p.paragraph_format.left_indent = Inches(0.15)
+            imp_p.add_run(str(what_would_improve))
+
+        doc.add_paragraph()
+        sep = doc.add_paragraph()
+        sep_run = sep.add_run('─' * 72)
+        sep_run.font.size = Pt(8)
+        sep_run.font.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
+        doc.add_paragraph()
+
     # ── SINGLE FOOTER ────────────────────────────────────────────────────────
     doc.add_paragraph()
     ft_p = doc.add_paragraph()
@@ -362,6 +474,8 @@ class ExportRequest(BaseModel):
     convergence_index: int
     supplier_name: str
     output: Dict[str, Any]
+    include_buying_signals: bool = False
+    include_reasoning: bool = False
 
 
 @router.post('/generate')
@@ -429,6 +543,24 @@ async def generate_output(payload: GenerateRequest, x_session_id: str = Header(.
 
 @router.post('/export')
 async def export_output(payload: ExportRequest, x_session_id: str = Header(...)):
+    buying_signals = None
+    score_reasoning = None
+    what_would_improve = None
+
+    if payload.include_buying_signals or payload.include_reasoning:
+        profile_doc = db.get_relationship_profile(payload.profile_id)
+        if profile_doc:
+            profile = profile_doc.get('profile', {})
+            if payload.include_buying_signals:
+                signals = profile.get('buying_signals') or profile_doc.get('buying_signals')
+                if signals:
+                    buying_signals = signals
+            if payload.include_reasoning:
+                ci = profile.get('convergence_index') or {}
+                if isinstance(ci, dict):
+                    score_reasoning = ci.get('reasoning')
+                    what_would_improve = ci.get('what_would_improve_it')
+
     try:
         docx_bytes = _build_docx(
             label=payload.label,
@@ -436,6 +568,9 @@ async def export_output(payload: ExportRequest, x_session_id: str = Header(...))
             supplier_name=payload.supplier_name,
             convergence_index=payload.convergence_index,
             output=payload.output,
+            buying_signals=buying_signals,
+            score_reasoning=score_reasoning,
+            what_would_improve=what_would_improve,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))

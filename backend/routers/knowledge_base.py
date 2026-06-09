@@ -1,5 +1,5 @@
 """
-STRATAGENT — Knowledge Base Router
+STRATAGENT -- Knowledge Base Router
 Handles supplier onboarding, document ingestion, and Intelligence Depth scoring.
 """
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Header, BackgroundTasks
@@ -21,10 +21,109 @@ async def _bg_synthesise(supplier_id: str, trigger_content: str, trigger_type: s
     await _background_synthesise(supplier_id, trigger_content, trigger_type)
 
 
+# -- Intelligence Depth helpers --------------------------------------------------
+# Element weights mirror WEIGHTS in agents/extraction_agent.py:score_intelligence_depth.
+# Duplicated (read-only) here so gap identification can compare each element's
+# score to its max. Keep in sync if the scoring model changes.
+_ELEMENT_MAX = {
+    "product_catalogue":       20,
+    "technical_datasheets":    15,
+    "certifications":          10,
+    "case_studies":            20,
+    "competitive_positioning": 10,
+    "pricing_framework":        8,
+    "distribution_channels":   12,
+    "reference_projects":      10,
+    "objections_responses":     5,
+}
+
+_ELEMENT_LABELS = {
+    "product_catalogue":       "Product Catalogue",
+    "technical_datasheets":    "Technical Datasheets",
+    "certifications":          "Certifications",
+    "case_studies":            "Case Studies",
+    "competitive_positioning": "Competitive Positioning",
+    "pricing_framework":       "Pricing Framework",
+    "distribution_channels":   "Distribution Channels",
+    "reference_projects":      "Reference Projects",
+    "objections_responses":    "Objections & Responses",
+}
+
+
+def _threshold_label(total: float) -> str:
+    """Map a total Intelligence Depth score (0-100) to its readiness label.
+    Mirrors _depth_label in agents/strategist_agent.py -- keep both in sync."""
+    if total >= 90:
+        return "SINGULARITY READY"
+    if total >= 80:
+        return "PROPOSAL READY"
+    if total >= 50:
+        return "VALUE BRIEF READY"
+    return "INTELLIGENCE GAP"
+
+
+def _identify_gaps(scores: dict) -> list:
+    """Return the weakest-scoring KB elements (below 40% of their max weight),
+    weakest-ratio first, so the UI can prompt on what to fill in next."""
+    gaps = []
+    for key, max_weight in _ELEMENT_MAX.items():
+        score = scores.get(key, 0) or 0
+        if score < max_weight * 0.4:
+            gaps.append({
+                "element": key,
+                "label": _ELEMENT_LABELS.get(key, key.replace("_", " ").title()),
+                "score": round(score, 1),
+                "max": max_weight,
+            })
+    gaps.sort(key=lambda g: (g["score"] / g["max"]) if g["max"] else 0)
+    return gaps
+
+
+def _newly_unlocked(old_total: float, new_total: float) -> list:
+    """Return readiness labels crossed when total moved from old_total to new_total."""
+    thresholds = [
+        (50, "VALUE BRIEF READY"),
+        (80, "PROPOSAL READY"),
+        (90, "SINGULARITY READY"),
+    ]
+    return [label for value, label in thresholds if old_total < value <= new_total]
+
+
+def _check_monitored_positions(supplier_id: str, scores: dict, total: float):
+    """Re-evaluate this supplier's watching Monitored Positions after a KB update.
+    Surfaces positions whose 'document' trigger fires on any new upload, or whose
+    'threshold' trigger's target Intelligence Depth has now been reached."""
+    try:
+        positions = db.get_monitored_positions(supplier_id)
+    except Exception:
+        return
+    for position in positions:
+        trigger = position.get("trigger", {}) or {}
+        ttype = trigger.get("type")
+        position_id = position.get("id") or position.get("position_id")
+        if not position_id:
+            continue
+        if ttype == "document":
+            db.surface_monitored_position(
+                position_id,
+                "New document uploaded to the Knowledge Base."
+            )
+        elif ttype == "threshold":
+            try:
+                target = float(trigger.get("value", 0))
+            except (TypeError, ValueError):
+                continue
+            if total >= target:
+                db.surface_monitored_position(
+                    position_id,
+                    f"Intelligence Depth reached {round(total)} (target {round(target)})."
+                )
+
+
 class SupplierCreate(BaseModel):
     company_name: str
     website_url: Optional[str] = None
-    # Manual seed fields — set by Jason, take precedence over AI inference
+    # Manual seed fields -- set by Jason, take precedence over AI inference
     product_plain: Optional[str] = None      # "In one sentence, what does this company sell?"
     buyer_type: Optional[str] = None         # "Who buys this?"
     use_case: Optional[str] = None           # "What do buyers use it for?"
@@ -38,7 +137,7 @@ async def create_knowledge_base(
 ):
     """Create a new Knowledge Base and run initial web research."""
 
-    # Duplicate guard — check before consuming an action
+    # Duplicate guard -- check before consuming an action
     existing = db.list_knowledge_bases()
     for kb in existing:
         if kb.get("company_name", "").strip().lower() == payload.company_name.strip().lower():
@@ -60,7 +159,7 @@ async def create_knowledge_base(
 
     scores = score_intelligence_depth(profile)
 
-    # Build manual seed from Jason's direct input — this anchors all future AI work
+    # Build manual seed from Jason's direct input -- this anchors all future AI work
     manual_seed = {}
     if payload.product_plain: manual_seed["product_plain"] = payload.product_plain.strip()
     if payload.buyer_type:    manual_seed["buyer_type"]    = payload.buyer_type.strip()
@@ -264,14 +363,14 @@ async def update_website_url(
         raise HTTPException(status_code=404, detail="Knowledge Base not found")
     url = website_url.strip() or None
     db.save_knowledge_base(supplier_id, {"website_url": url})
-    # Auto-crawl the site — no need to click Deep Scan separately
+    # Auto-crawl the site -- no need to click Deep Scan separately
     if url:
         background_tasks.add_task(_bg_deep_scan, supplier_id, url)
     return {"supplier_id": supplier_id, "website_url": url, "scan_triggered": bool(url)}
 
 
 async def _bg_deep_scan(supplier_id: str, website_url: str):
-    """Background deep scan — triggered automatically when website URL is set."""
+    """Background deep scan -- triggered automatically when website URL is set."""
     try:
         from agents.stratalyst_agent import crawl_supplier_website, propose_seed_from_profile
         from agents.extraction_agent import score_intelligence_depth
@@ -357,7 +456,7 @@ async def upload_product_image(
             img.save(buf, format=fmt, optimize=True, quality=82)
             content = buf.getvalue()
         except ImportError:
-            # Pillow not installed — enforce hard size limit
+            # Pillow not installed -- enforce hard size limit
             raise HTTPException(
                 status_code=400,
                 detail=f"Image is too large for storage ({len(content)//1024} KB). Please resize to under 700 KB and re-upload."
@@ -420,5 +519,16 @@ async def get_product_image(supplier_id: str, image_id: str):
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
     return img
+
+
+@router.delete("/{supplier_id}/images/{image_id}")
+async def delete_product_image(supplier_id: str, image_id: str):
+    """Remove a tagged product image (e.g. to clear out duplicates)."""
+    images = db.get_product_images(supplier_id)
+    img = next((i for i in images if i.get("id") == image_id), None)
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    db.delete_product_image(image_id)
+    return {"status": "deleted", "image_id": image_id}
 
 

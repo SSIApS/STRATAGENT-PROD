@@ -25,8 +25,12 @@ python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 export STRATAGENT_GEMINI_API_KEY=your_key_here
-uvicorn main:app --reload --port 8080
+uvicorn main:app --reload --port 9000
 ```
 
-API will be available at http://localhost:8080
-Health check: http://localhost:8080/health
+API will be available at http://localhost:9000
+Health check: http://localhost:9000/health
+
+> Note: STRATAGENT permanently moved from port 8080 to port 9000 on 2026-06-07
+> after an unknown Windows process was found intercepting traffic on 8080
+> (returning spurious 404s before requests reached uvicorn). Always use 9000.

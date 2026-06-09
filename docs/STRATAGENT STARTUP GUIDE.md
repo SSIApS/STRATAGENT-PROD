@@ -32,12 +32,40 @@ $env:GOOGLE_CLOUD_PROJECT="gen-lang-client-0933865033"
 $env:STRATAGENT_GEMINI_API_KEY="YOUR_GEMINI_KEY_HERE"
 ```
 ```
-uvicorn main:app --reload --port 8080
+uvicorn main:app --reload --port 9000
 ```
 
 **Your Gemini API key** is at: aistudio.google.com/apikey  
 → Project: gen-lang-client-0933865033  
 → Copy the key starting with AIza...
+
+---
+
+## Before you start (or restart) the backend — run the watchdog
+
+STRATAGENT has a pre-startup watchdog script that catches the bug classes that
+have crashed the backend before (undefined helpers, Firestore query errors,
+non-ASCII in source files, etc.). Run it from the backend folder before
+`uvicorn` every time:
+
+```
+cd "C:\Claude Code Folder\STRATAGENT SALES APP\STRATAGENT Sales App\stratagent\backend"
+venv\Scripts\activate
+python check_before_startup.py
+```
+
+It runs 12 checks: syntax validity, non-ASCII in docstrings/comments, router
+registration, router prefix collisions, undefined helper functions, live
+import resolution, direct Gemini calls outside `services/gemini.py`, f-string
+double-brace dict bugs, Firestore `where()` + `order_by()` chains, required
+env vars/secrets, port availability, and a recently-modified-files summary.
+
+- **Exit 0 ("All clean")** → safe to start/restart
+- **Exit 1 ("ERRORS")** → fix the listed issues before running `uvicorn`
+
+There's also a faster syntax-only version, `check_before_restart.py`, for
+quick checks between small edits. When in doubt, run the fuller
+`check_before_startup.py`.
 
 ---
 

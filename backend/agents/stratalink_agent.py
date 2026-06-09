@@ -1,5 +1,5 @@
 """
-STRATAGENT — STRATALINK Agent
+STRATAGENT -- STRATALINK Agent
 Affiliate intelligence and revenue development.
 
 STRATALINK is Jason's product expert for the affiliate division.
@@ -21,7 +21,7 @@ AFFILIATE_CATEGORIES = {
     "hospitality_supplies": "Physical products for hotel, hostel, and STR guest experience",
     "eco_products":         "Sustainable, biodegradable, or eco-certified consumer products",
     "industrial_supplies":  "Industrial consumables, safety, maintenance, and facility products",
-    "b2b_software":         "Business software for SMEs — CRM, ERP, operations, procurement",
+    "b2b_software":         "Business software for SMEs -- CRM, ERP, operations, procurement",
     "logistics":            "Shipping, fulfilment, and supply chain services",
     "marketing_tools":      "Digital marketing, SEO, email, social media tools for SMBs",
     "finance_payments":     "Payment processing, invoicing, accounting for small businesses",
@@ -42,7 +42,7 @@ async def research_affiliate_category(
     category_desc = AFFILIATE_CATEGORIES.get(category, category)
 
     prompt = f"""
-You are STRATALINK — the affiliate intelligence agent for STRATAGENT.
+You are STRATALINK -- the affiliate intelligence agent for STRATAGENT.
 Your job is to find high-quality affiliate programs that Jason Smith (solopreneur B2B sales, Denmark)
 could join to earn commissions by referring his prospects and contacts.
 
@@ -54,21 +54,21 @@ Search for {count} affiliate programs in this category. For each program, find:
 1. The company name and what they sell
 2. Their affiliate program structure (commission rate, cookie duration, payment terms)
 3. The affiliate network they use (direct, Impact, CJ, ShareASale, PartnerStack, Awin, etc.)
-4. The ideal buyer profile — who should Jason refer to earn commissions
+4. The ideal buyer profile -- who should Jason refer to earn commissions
 5. Whether the program is genuinely worth joining (reputation, payout reliability, conversion rate if findable)
 6. The signup URL for their affiliate program
 
 Focus on programs that complement Jason's existing supplier base:
-- MissBlue (biodegradable tea/coffee filters) → hospitality, Airbnb, eco-conscious buyers
-- STRATATIV3D / Ungunk (3D printed bathroom products) → hospitality, property managers
-- Industrial suppliers → facility managers, procurement teams, maintenance operations
+- MissBlue (biodegradable tea/coffee filters) -> hospitality, Airbnb, eco-conscious buyers
+- STRATATIV3D / Ungunk (3D printed bathroom products) -> hospitality, property managers
+- Industrial suppliers -> facility managers, procurement teams, maintenance operations
 
 Return a JSON array of {count} objects:
 [
   {{
     "partner_name": "Company Name",
     "product_description": "What they sell in plain English",
-    "target_buyer": "Who buys this — the affiliate referral target",
+    "target_buyer": "Who buys this -- the affiliate referral target",
     "commission_type": "one-time | recurring | hybrid",
     "commission_rate": "e.g. 20% recurring, $50 per signup, 15% of first order",
     "cookie_duration_days": 30,
@@ -103,14 +103,14 @@ Program: {partner_name or program_url}
 URL: {program_url}
 
 Research this affiliate program thoroughly. Find:
-1. Commission structure — exact rates, tiers, recurring vs one-time
+1. Commission structure -- exact rates, tiers, recurring vs one-time
 2. Cookie duration
 3. Payment schedule and minimum payout threshold
 4. Affiliate network used
-5. Reputation — are affiliates paid reliably? Any complaints?
+5. Reputation -- are affiliates paid reliably? Any complaints?
 6. Average conversion rate if findable (industry benchmarks if not)
 7. Promotional materials available (banners, links, email templates)
-8. Restrictions — any geographic restrictions for European affiliates?
+8. Restrictions -- any geographic restrictions for European affiliates?
 9. Contact details for the affiliate manager
 
 Return a JSON object:
@@ -180,7 +180,7 @@ Which of these affiliate partners are a genuine adjacent fit for this prospect?
 Consider: would this prospect plausibly need or benefit from this partner's product or service,
 given what we know about their operations?
 
-Only include partners where the match is real and specific — not generic.
+Only include partners where the match is real and specific -- not generic.
 Return up to 3 matches, ranked by relevance.
 
 Return a JSON array:

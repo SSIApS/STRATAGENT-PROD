@@ -56,7 +56,11 @@ export default function StratALink({ session }: { session: Session }) {
   const [researchCustom, setResearchCustom] = useState('')
   const [researchGeo, setResearchGeo] = useState('europe')
   const [researchResults, setResearchResults] = useState<any[]>([])
+  const [researchRunId, setResearchRunId] = useState<string | null>(null)
   const [researchLoading, setResearchLoading] = useState(false)
+  const [researchHistory, setResearchHistory] = useState<any[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [evaluateUrl, setEvaluateUrl] = useState('')
   const [evaluateName, setEvaluateName] = useState('')
   const [evaluation, setEvaluation] = useState<any>(null)
@@ -101,11 +105,43 @@ export default function StratALink({ session }: { session: Session }) {
     if (!cat) return
     setResearchLoading(true)
     setResearchResults([])
+    setResearchRunId(null)
     try {
       const r = await api.post(`/stratalink/research-category?category=${encodeURIComponent(cat)}&geography=${researchGeo}&count=5`)
+      // Saved automatically server-side -- programs come back tagged with program_id + selection_status
       setResearchResults(r.data.programs || [])
+      setResearchRunId(r.data.run_id || null)
+      loadResearchHistory()
     } catch (e: any) { alert(e.response?.data?.detail || 'Research failed') }
     finally { setResearchLoading(false) }
+  }
+
+  async function loadResearchHistory() {
+    setHistoryLoading(true)
+    try {
+      const r = await api.get('/stratalink/research-runs')
+      setResearchHistory(r.data || [])
+    } catch {}
+    finally { setHistoryLoading(false) }
+  }
+
+  // Flag a program from a saved search for later follow-up (find registration URL,
+  // sketch a content/marketing plan) without acting on it right now.
+  async function toggleProgramSelection(runId: string | null, p: any, fromHistoryRunId?: string) {
+    const targetRunId = fromHistoryRunId || runId
+    if (!targetRunId || !p.program_id) return
+    const nextStatus = p.selection_status === 'selected' ? 'new' : 'selected'
+    try {
+      const r = await api.patch(`/stratalink/research-runs/${targetRunId}/programs/${p.program_id}`,
+        { selection_status: nextStatus })
+      const updated = r.data
+      // Update whichever list this program lives in (current results and/or history)
+      setResearchResults(prev => prev.map(x => x.program_id === p.program_id ? { ...x, ...updated } : x))
+      setResearchHistory(prev => prev.map(run => run.run_id !== targetRunId ? run : {
+        ...run,
+        programs: (run.programs || []).map((x: any) => x.program_id === p.program_id ? { ...x, ...updated } : x)
+      }))
+    } catch (e: any) { alert(e.response?.data?.detail || 'Could not update selection') }
   }
 
   async function runEvaluate() {
@@ -441,16 +477,79 @@ export default function StratALink({ session }: { session: Session }) {
                       {p.why_relevant && <p className="text-xs mt-1" style={{ color: '#c9a84c' }}>↳ {p.why_relevant}</p>}
                       {p.quality_notes && <p className="text-xs mt-1" style={{ color: 'var(--stratagent-muted)' }}>{p.quality_notes}</p>}
                     </div>
-                    <button onClick={() => addPartnerFromResearch(p)}
-                            className="text-xs px-3 py-1.5 rounded-lg flex-shrink-0 font-semibold"
-                            style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
-                      + Add to Library
-                    </button>
+                    <div className="flex flex-col gap-2 flex-shrink-0">
+                      <button onClick={() => addPartnerFromResearch(p)}
+                              className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                              style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                        + Add to Library
+                      </button>
+                      <button onClick={() => toggleProgramSelection(researchRunId, p)}
+                              className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                              style={p.selection_status === 'selected'
+                                ? { background: '#2f8f4e22', color: '#4ade80', border: '1px solid #4ade8055' }
+                                : { background: 'transparent', color: 'var(--stratagent-muted)', border: '1px solid var(--stratagent-border)' }}>
+                        {p.selection_status === 'selected' ? '✓ Flagged for follow-up' : 'Flag for follow-up'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
+
+          {/* Saved search history */}
+          <div className="space-y-2">
+            <button onClick={() => { const next = !historyOpen; setHistoryOpen(next); if (next && researchHistory.length === 0) loadResearchHistory() }}
+                    className="text-xs uppercase tracking-widest font-semibold"
+                    style={{ color: 'var(--stratagent-gold)' }}>
+              {historyOpen ? '▾' : '▸'} Saved Searches {researchHistory.length > 0 ? `(${researchHistory.length})` : ''}
+            </button>
+            {historyOpen && (
+              <div className="space-y-3">
+                {historyLoading && (
+                  <p className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>Loading saved searches...</p>
+                )}
+                {!historyLoading && researchHistory.length === 0 && (
+                  <p className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>No saved searches yet -- run a research above and it will be stored here automatically.</p>
+                )}
+                {researchHistory.map((run) => (
+                  <div key={run.run_id} className="p-4 rounded-xl space-y-2"
+                       style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="text-sm font-semibold" style={{ color: 'var(--stratagent-text)' }}>
+                        {run.category} <span style={{ color: 'var(--stratagent-muted)', fontWeight: 400 }}>· {run.geography} · {run.count} programs</span>
+                      </div>
+                      <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                        {run.created_at ? new Date(run.created_at * 1000).toLocaleString() : ''}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {(run.programs || []).map((p: any) => (
+                        <div key={p.program_id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
+                             style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-semibold" style={{ color: 'var(--stratagent-text)' }}>{p.partner_name}</span>
+                            <span className="text-xs px-1.5 py-0.5 rounded"
+                                  style={{ color: qualityColor(p.quality_rating), background: qualityColor(p.quality_rating) + '22', border: `1px solid ${qualityColor(p.quality_rating)}44` }}>
+                              {p.quality_rating}
+                            </span>
+                          </div>
+                          <button onClick={() => toggleProgramSelection(run.run_id, p, run.run_id)}
+                                  className="text-xs px-2.5 py-1 rounded-lg font-semibold flex-shrink-0"
+                                  style={p.selection_status === 'selected'
+                                    ? { background: '#2f8f4e22', color: '#4ade80', border: '1px solid #4ade8055' }
+                                    : { background: 'transparent', color: 'var(--stratagent-muted)', border: '1px solid var(--stratagent-border)' }}>
+                            {p.selection_status === 'selected' ? '✓ Flagged' : 'Flag'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
 
           {/* Deep evaluate */}
           <div className="p-5 rounded-xl space-y-3"

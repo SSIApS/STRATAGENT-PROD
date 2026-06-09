@@ -1,5 +1,5 @@
 """
-STRATAGENT — STRATASCOUT Agent
+STRATAGENT -- STRATASCOUT Agent
 Proactive prospect hunter. Geography-scoped, capability-matched.
 Finds companies that need the supplier's capability AND show active buying signals.
 Deposits candidates to the Prospect Pool for Jason to review.
@@ -14,7 +14,7 @@ GEOGRAPHY_ZONES = {
     "scandinavia":    "Denmark, Sweden, Norway, Finland",
     "northern_europe":"Denmark, Sweden, Norway, Finland, Germany, Netherlands, Belgium, UK, Ireland",
     "europe":         "All EU member states plus UK, Norway, Switzerland",
-    "global":         "Worldwide — no geographic restriction",
+    "global":         "Worldwide -- no geographic restriction",
 }
 
 
@@ -38,50 +38,50 @@ async def hunt_prospects(
     supplier_summary = _summarise_kb(supplier_kb)
     if sector_focus:
         sector_hint = f"""
-SECTOR FOCUS — THIS IS A HARD CONSTRAINT:
+SECTOR FOCUS -- THIS IS A HARD CONSTRAINT:
 You are hunting specifically within this sector/buyer type: "{sector_focus}"
 Only return prospects that belong to this sector or buyer profile.
-Do not stray into adjacent sectors. If you cannot find {count} matches within this sector, return fewer — do not pad with off-sector results.
+Do not stray into adjacent sectors. If you cannot find {count} matches within this sector, return fewer -- do not pad with off-sector results.
 Examples of how to interpret a sector focus:
-  "Airbnb Superhost operators" → multi-property short-term rental hosts, property management companies running STR portfolios, Airbnb co-hosts managing 5+ properties
-  "hotel chains" → branded hotel groups, boutique hotel operators, serviced apartment operators
-  "food service" → cafes, restaurants, catering companies, canteen operators
-  "offshore energy" → oil platform operators, offshore wind installation contractors
+  "Airbnb Superhost operators" -> multi-property short-term rental hosts, property management companies running STR portfolios, Airbnb co-hosts managing 5+ properties
+  "hotel chains" -> branded hotel groups, boutique hotel operators, serviced apartment operators
+  "food service" -> cafes, restaurants, catering companies, canteen operators
+  "offshore energy" -> oil platform operators, offshore wind installation contractors
 Apply the same interpretive logic to: "{sector_focus}"
 """
     else:
         sector_hint = ""
 
     prompt = f"""
-You are STRATASCOUT — an elite proactive prospect hunter for an industrial supplier.
+You are STRATASCOUT -- an elite proactive prospect hunter for an industrial supplier.
 Your mission: find companies that NEED this supplier's EXACT capability AND are in active motion RIGHT NOW.
 
 TODAY'S DATE: {datetime.now().strftime("%B %Y")}
 
-SUPPLIER CAPABILITY — READ THIS CAREFULLY:
+SUPPLIER CAPABILITY -- READ THIS CAREFULLY:
 {supplier_summary}
 
-CRITICAL — PRODUCT MATCHING RULES:
+CRITICAL -- PRODUCT MATCHING RULES:
 1. Match prospects to the EXACT products described above. Read the description literally.
-2. Do NOT infer product type from individual words — use the FULL description.
+2. Do NOT infer product type from individual words -- use the FULL description.
 3. Do NOT substitute adjacent or similar-sounding products.
 
-WORD DISAMBIGUATION — apply this logic before every match:
+WORD DISAMBIGUATION -- apply this logic before every match:
 - "filter" in the context of tea/coffee = paper filter for brewing beverages (like a teabag or drip coffee filter). This is NOT a water filter, NOT an RO system, NOT industrial filtration, NOT water treatment.
 - "filter" in the context of industrial/technical = filtration system. NOT a beverage filter.
 - "biodegradable" = compostable material product. NOT recycling infrastructure. NOT waste management.
 - "3D printed" = additive manufactured physical parts. NOT digital design software. NOT general manufacturing.
 
-SELF-CHECK before including any prospect: Ask — "Would the procurement manager for THIS specific product (exactly as described) contact this supplier?" If the answer requires a stretch of logic, do not include the prospect.
+SELF-CHECK before including any prospect: Ask -- "Would the procurement manager for THIS specific product (exactly as described) contact this supplier?" If the answer requires a stretch of logic, do not include the prospect.
 
-Example of a WRONG match: MissBlue (biodegradable coffee filter paper) → Novo Nordisk (needs water treatment infrastructure). WRONG. Novo Nordisk does not buy filter paper from MissBlue.
-Example of a RIGHT match: MissBlue (biodegradable coffee filter paper) → a hotel chain buying eco-certified coffee supplies for guest rooms. RIGHT.
+Example of a WRONG match: MissBlue (biodegradable coffee filter paper) -> Novo Nordisk (needs water treatment infrastructure). WRONG. Novo Nordisk does not buy filter paper from MissBlue.
+Example of a RIGHT match: MissBlue (biodegradable coffee filter paper) -> a hotel chain buying eco-certified coffee supplies for guest rooms. RIGHT.
 
 GEOGRAPHY ZONE: {zone_description}
 {sector_hint}
-RECENCY REQUIREMENT — THIS IS MANDATORY:
+RECENCY REQUIREMENT -- THIS IS MANDATORY:
 Every buying signal MUST be from {cutoff_year} or {current_year}.
-Signals from {cutoff_year - 1} or earlier are REJECTED — do not include them.
+Signals from {cutoff_year - 1} or earlier are REJECTED -- do not include them.
 If you cannot find a recent signal for a prospect, skip that prospect entirely.
 Old news is not a buying signal. A 2021 announcement is not actionable in {current_year}.
 
@@ -89,7 +89,7 @@ Search the web for CURRENT news, tenders, and announcements. You are hunting for
 
 For each prospect you need:
 1. A company with genuine operational need for THIS SPECIFIC SUPPLIER'S products
-2. A RECENT buying signal (from {cutoff_year}–{current_year} only). Search ALL of these sources:
+2. A RECENT buying signal (from {cutoff_year}-{current_year} only). Search ALL of these sources:
 
    FORMAL SIGNALS (high confidence):
    - Active published tender or procurement notice
@@ -122,11 +122,11 @@ Return a JSON array of up to {count} objects:
     "country": "Country",
     "city": "City or region",
     "industry": "Specific industry sector",
-    "operational_need": "Exactly why they need THIS supplier's specific products — be direct and literal",
+    "operational_need": "Exactly why they need THIS supplier's specific products -- be direct and literal",
     "discovery_signal": {{
       "type": "TENDER | CAPEX | LEADERSHIP_CHANGE | REGULATORY | STRATEGIC_SHIFT | NEWS_EVENT | SOCIAL_SIGNAL",
-      "description": "What was found — be specific and factual",
-      "timing": "Month and year this was reported — must be {cutoff_year} or {current_year}",
+      "description": "What was found -- be specific and factual",
+      "timing": "Month and year this was reported -- must be {cutoff_year} or {current_year}",
       "source": "URL or publication where this was found"
     }},
     "decision_maker": {{
@@ -135,7 +135,7 @@ Return a JSON array of up to {count} objects:
       "linkedin": "URL or null"
     }},
     "estimated_ci": 0-100,
-    "discovery_reason": "One sentence: why this company was surfaced — connect THIS supplier's exact product to their specific need and the recent signal",
+    "discovery_reason": "One sentence: why this company was surfaced -- connect THIS supplier's exact product to their specific need and the recent signal",
     "confidence": "HIGH | MEDIUM | LOW"
   }}
 ]
@@ -182,7 +182,7 @@ def _summarise_kb(kb: dict) -> str:
 
     parts = ["SUPPLIER DEFINITION:"]
 
-    # Manual seed takes absolute precedence — Jason's own words
+    # Manual seed takes absolute precedence -- Jason's own words
     if seed.get("product_plain"):
         parts.append(f"What they sell (owner-defined): {seed['product_plain']}")
     if seed.get("buyer_type"):
@@ -190,16 +190,16 @@ def _summarise_kb(kb: dict) -> str:
     if seed.get("use_case"):
         parts.append(f"How buyers use it (owner-defined): {seed['use_case']}")
     if seed.get("not_this"):
-        parts.append(f"THIS IS NOT (owner-defined — do not confuse): {seed['not_this']}")
+        parts.append(f"THIS IS NOT (owner-defined -- do not confuse): {seed['not_this']}")
 
     if any(seed.values()):
         parts.append("")
-        parts.append("AI-RESEARCHED DETAIL (supports the above — does not override it):")
+        parts.append("AI-RESEARCHED DETAIL (supports the above -- does not override it):")
 
     catalogue = profile.get("product_catalogue", "")
     overview  = profile.get("company_overview", "")
     if not any(seed.values()):
-        # No seed — use overview as the lead to prevent name-based inference
+        # No seed -- use overview as the lead to prevent name-based inference
         if overview:
             parts.append(f"Company overview: {str(overview)[:300]}")
         parts.append(f"Products/services: {str(catalogue)[:500]}" if catalogue else f"Company: {company}")

@@ -1,15 +1,15 @@
 """
-STRATAGENT — STRATALYST Router
+STRATAGENT -- STRATALYST Router
 Endpoints for the STRATALYST KB enrichment agent.
 
 GET  /api/stratalyst/storage
-  → Returns per-supplier storage breakdown sorted by usage
+  -> Returns per-supplier storage breakdown sorted by usage
 
 POST /api/stratalyst/{supplier_id}/research-gaps
-  → Scans KB gaps, searches web, returns findings brief for user approval
+  -> Scans KB gaps, searches web, returns findings brief for user approval
 
 POST /api/stratalyst/{supplier_id}/approve-sources
-  → Ingests approved source URLs, updates KB profile and intelligence depth
+  -> Ingests approved source URLs, updates KB profile and intelligence depth
 """
 from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from pydantic import BaseModel
@@ -26,7 +26,7 @@ async def _background_synthesise(supplier_id: str, trigger_content: str, trigger
     """
     Run silently after content is added.
     Synthesise new profile fields from existing content, re-score, save.
-    Does not block the API response — runs after it returns.
+    Does not block the API response -- runs after it returns.
     """
     try:
         kb = db.get_knowledge_base(supplier_id)
@@ -46,7 +46,7 @@ async def _background_synthesise(supplier_id: str, trigger_content: str, trigger
         if not improvements:
             return
 
-        # Merge improvements — only fill thin/missing fields, never overwrite good content
+        # Merge improvements -- only fill thin/missing fields, never overwrite good content
         for key, value in improvements.items():
             existing = str(profile.get(key) or "")
             if len(existing) < 150:  # Only improve thin fields
@@ -59,7 +59,7 @@ async def _background_synthesise(supplier_id: str, trigger_content: str, trigger
             "intelligence_depth": {"scores": scores, "total": total},
         })
     except Exception:
-        pass  # Background — never surface errors to user
+        pass  # Background -- never surface errors to user
 
 router = APIRouter()
 
@@ -121,7 +121,7 @@ async def run_research_gaps(
     """
     STRATALYST: Scan this supplier's intelligence gaps and search for sources.
     Returns a findings brief with candidate URLs and estimated depth gains.
-    Does NOT consume an action — this is a research-only call.
+    Does NOT consume an action -- this is a research-only call.
     """
     kb = db.get_knowledge_base(supplier_id)
     if not kb:
@@ -267,7 +267,7 @@ async def submit_human_intel(
         })
         new_depth = {"scores": scores, "total": total}
 
-    # Always trigger background synthesis — it builds on everything in the KB
+    # Always trigger background synthesis -- it builds on everything in the KB
     background_tasks.add_task(
         _background_synthesise,
         supplier_id,
@@ -340,7 +340,7 @@ async def deep_scan_website(
     """
     STRATALYST Deep Scan: crawl the supplier's entire website automatically.
     Discovers all product/technical pages, extracts intelligence, auto-ingests.
-    No approval step — it's the supplier's own site.
+    No approval step -- it's the supplier's own site.
     Designed to push KB depth significantly in one operation.
     """
     await check_and_increment(x_session_id)
@@ -375,7 +375,7 @@ async def deep_scan_website(
             "pages_crawled": pages_crawled,
         }
 
-    # Merge into existing profile — longer content wins, never erase existing
+    # Merge into existing profile -- longer content wins, never erase existing
     existing_profile = kb.get("profile", {})
     merged = dict(existing_profile)
     fields_improved = 0

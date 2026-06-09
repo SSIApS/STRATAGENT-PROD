@@ -1,5 +1,5 @@
 """
-STRATAGENT — Demo Gate
+STRATAGENT -- Demo Gate
 Controls demo mode: password enforcement and 5-action hard limit per session.
 Cost protection for XPRIZE demonstration phase.
 """

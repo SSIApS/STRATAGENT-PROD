@@ -1,5 +1,5 @@
 """
-STRATAGENT — Folder Sync Router
+STRATAGENT -- Folder Sync Router
 Scans local Suppliers/ and Products/ folders for files dropped offline,
 ingests PDFs and images into the matching Knowledge Base.
 
@@ -26,6 +26,30 @@ router = APIRouter()
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 PDF_EXTENSION = ".pdf"
+
+# Firestore document limit is 1 MB; base64 adds ~33% overhead.
+# Auto-resize if the original file would exceed this safe threshold --
+# mirrors the resize step in knowledge_base.py's manual image-upload endpoint
+# so folder-synced images don't fail with an opaque "too large" error.
+FIRESTORE_SAFE_BYTES = 700 * 1024
+
+
+def _shrink_image_if_needed(content: bytes, content_type: str) -> bytes:
+    """Resize an oversized image to fit Firestore's document size limit.
+    Returns the original bytes unchanged if already small enough."""
+    if len(content) <= FIRESTORE_SAFE_BYTES:
+        return content
+    from PIL import Image
+    import io
+    img = Image.open(io.BytesIO(content))
+    max_w = 1200
+    if img.width > max_w:
+        ratio = max_w / img.width
+        img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
+    buf = io.BytesIO()
+    fmt = "PNG" if content_type == "image/png" else "JPEG"
+    img.save(buf, format=fmt, optimize=True, quality=82)
+    return buf.getvalue()
 
 SUBFOLDER_FOCUS_MAP = {
     "case studies": "case_studies",
@@ -161,6 +185,13 @@ async def sync_local_folder(
     profile = kb.get("profile", {})
     ingested = []
     errors = []
+    # Track ingested filenames in Firestore as we go (not just at the end).
+    # Large image batches can take long enough that the browser/dev-proxy
+    # disconnects mid-sync; FastAPI then cancels the in-flight request before
+    # it reaches the final save below. Without an incremental checkpoint, a
+    # retry sees the same files as "new" and re-ingests them -- creating
+    # duplicate product_image records each time the user clicks Sync Now.
+    documents_so_far = list(already_ingested)
 
     for file_info in new_files:
         try:
@@ -189,6 +220,19 @@ async def sync_local_folder(
                 content_type_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                                     ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
                 content_type = content_type_map.get(ext, "image/jpeg")
+                try:
+                    content = _shrink_image_if_needed(content, content_type)
+                except Exception:
+                    # If Pillow can't process it for any reason, fall through and let
+                    # the size check below produce a clear, actionable error message.
+                    pass
+                if len(content) > FIRESTORE_SAFE_BYTES:
+                    errors.append({
+                        "file": file_info["filename"],
+                        "error": f"Image is {len(content)//1024} KB -- too large to store even after resizing. "
+                                 f"Please shrink it to under 700 KB and re-sync.",
+                    })
+                    continue
                 image_id = str(uuid.uuid4())
                 product_name = Path(file_info["filename"]).stem  # filename without extension
                 db.save_product_image(image_id, {
@@ -204,16 +248,25 @@ async def sync_local_folder(
                 })
                 ingested.append({"file": file_info["filename"], "type": "image", "subfolder": file_info["subfolder"]})
 
+            else:
+                continue
+
+            # Checkpoint immediately: record this file as ingested so a
+            # cancelled/retried request won't re-process it.
+            documents_so_far.append(file_info["filename"])
+            db.save_knowledge_base(supplier_id, {"documents": documents_so_far})
+
         except Exception as e:
             errors.append({"file": file_info["filename"], "error": str(e)})
 
-    # Recalculate scores and save
+    # Recalculate scores and save the final profile/intelligence snapshot
+    # (documents list is already up to date from the per-file checkpoints above).
     scores = score_intelligence_depth(profile)
     total = sum(scores.values())
     db.save_knowledge_base(supplier_id, {
         "profile": profile,
         "intelligence_depth": {"scores": scores, "total": total},
-        "documents": list(already_ingested) + [f["filename"] for f in ingested],
+        "documents": documents_so_far,
     })
 
     return {

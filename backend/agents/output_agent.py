@@ -1,5 +1,5 @@
 """
-STRATAGENT — Output Agent
+STRATAGENT -- Output Agent
 Generates graduated documents using Gemini.
 Uses section markers instead of JSON to avoid parse failures on large responses.
 """
@@ -15,16 +15,16 @@ _NO_FOOTER_RULE = (
 )
 
 _EMAIL_RULES = """
-EMAIL — ABSOLUTE RULES (violation = failure):
+EMAIL -- ABSOLUTE RULES (violation = failure):
 
 OPENER: The VERY FIRST WORD of the email must be the decision maker's first name followed by a comma.
   CORRECT: "Andreas,"
   WRONG: "Dear Andreas," / "Hi Andreas," / "Hello Andreas," / any greeting word before the name.
   If you write "Dear" anywhere in this email, you have failed.
 
-LINE 1 (after the name): One sentence naming something SPECIFIC from the intelligence — a real project name, facility, deadline, or regulatory requirement. Must be verifiable. Generic = rejected.
+LINE 1 (after the name): One sentence naming something SPECIFIC from the intelligence -- a real project name, facility, deadline, or regulatory requirement. Must be verifiable. Generic = rejected.
 LINE 2: One sentence about what the supplier does, tied to their specific operational need.
-LINE 3: One direct question — reference a specific deadline, project, or decision.
+LINE 3: One direct question -- reference a specific deadline, project, or decision.
 
 SIGN-OFF: End with exactly:
   Best regards,
@@ -36,6 +36,35 @@ DO NOT use placeholder text like [Your Name], [Name], [Your Company], or similar
 WORD COUNT: Under 100 words total. Count them. Cut ruthlessly if over.
 BANNED PHRASES: "I'm writing to", "I've been following", "I believe there's", "impressive", "truly", "significant", "seamless", "comprehensive", "committed to", "I'd be happy", "looking forward", "strong alignment", "valuable partner", "don't hesitate".
 """
+
+
+def _seed_block(kb: dict) -> str:
+    """
+    Renders the supplier's Manual Seed (Agent Definition) as a GROUND TRUTH block.
+    The seed is Jason's plain-words description of what the product actually IS --
+    it must override any conflicting text in product_catalogue / technical_differentiators,
+    which can be stale, AI-guessed, or contaminated by a same-named real-world company
+    (e.g. a coffee-filter-bag supplier whose enrichment pulled in a water-filtration
+    company's site content because they happen to share a name).
+    """
+    seed = kb.get('manual_seed') or {}
+    if not isinstance(seed, dict) or not seed:
+        return ''
+    plain = seed.get('product_plain', '')
+    buyer = seed.get('buyer_type', '')
+    use = seed.get('use_case', '')
+    not_this = seed.get('not_this', '')
+    if not plain and not not_this:
+        return ''
+    return (
+        "GROUND TRUTH -- WHAT THIS SUPPLIER ACTUALLY SELLS (overrides Products/Differentiators below "
+        "if they conflict; the catalogue text can be stale or pulled from an unrelated company with "
+        "a similar name):\n"
+        f"  What it is: {plain}\n"
+        f"  Who buys it: {buyer}\n"
+        f"  How it's used: {use}\n"
+        f"  HARD EXCLUSIONS -- never write about these, even if mentioned elsewhere: {not_this}\n"
+    )
 
 
 def _parse_sections(response: str) -> dict:
@@ -75,7 +104,7 @@ def _parse_sections(response: str) -> dict:
 
 
 async def generate_convergence_proposal(profile: dict, kb: dict) -> dict:
-    """PATH A — CONVERGENCE PROPOSAL (SD 90-100)"""
+    """PATH A -- CONVERGENCE PROPOSAL (SD 90-100)"""
 
     dm = profile.get('decision_maker', {})
     first_name = ''
@@ -87,9 +116,9 @@ async def generate_convergence_proposal(profile: dict, kb: dict) -> dict:
 
     signals = profile.get('buying_signals', [])
     signal_summary = '\n'.join(
-        f"  - [{s.get('type','')} / {s.get('strength','')}] {s.get('signal','')} — {s.get('timing','')}"
+        f"  - [{s.get('type','')} / {s.get('strength','')}] {s.get('signal','')} -- {s.get('timing','')}"
         for s in signals[:5]
-    ) or '  - No confirmed signals — approach based on project/operational intelligence'
+    ) or '  - No confirmed signals -- approach based on project/operational intelligence'
 
     prompt = f"""You are STRATAGENT generating a CONVERGENCE PROPOSAL (SD 90/100).
 Every document must be sign-ready without editing.
@@ -98,6 +127,7 @@ TODAY: {TODAY}
 FIRST NAME: "{first_name}"
 
 SUPPLIER: {kb.get('company_name')}
+{_seed_block(kb)}
 Products: {kb.get('profile', {}).get('product_catalogue', '')}
 Differentiators: {kb.get('profile', {}).get('technical_differentiators', '')}
 Certifications: {kb.get('profile', {}).get('certifications', '')}
@@ -132,12 +162,12 @@ Structure:
 **Singularity Density:** 90/100
 
 ### Why Now
-[4-5 bullet points — the specific intelligence that triggered this proposal.
+[4-5 bullet points -- the specific intelligence that triggered this proposal.
 Reference the actual signals, commissioning dates, regulatory requirements from above.
 This section proves the homework was done. Be factual and specific.]
 
 ### 1. Understanding [Prospect]'s Situation
-[Operational context — specific, references real projects]
+[Operational context -- specific, references real projects]
 
 ### 2. Proposed Solution
 [Supplier's integrated offering matched to the specific need]
@@ -155,7 +185,7 @@ This section proves the homework was done. Be factual and specific.]
 [Only certifications that apply to this prospect's environment]
 
 ### 5. Next Steps
-[Specific — reference a commissioning deadline or meeting window]
+[Specific -- reference a commissioning deadline or meeting window]
 ===END_PROPOSAL===
 
 ===ENGAGEMENT===
@@ -171,14 +201,14 @@ Use {TODAY} as the date. Leave placeholders only where the prospect must supply 
     result = _parse_sections(response)
 
     if not result.get('email'):
-        # Last resort fallback — something is very wrong with the response
-        result['email'] = f"[Generation failed — check backend logs]\n\nRaw response:\n{response[:500]}"
+        # Last resort fallback -- something is very wrong with the response
+        result['email'] = f"[Generation failed -- check backend logs]\n\nRaw response:\n{response[:500]}"
 
     return result
 
 
 async def generate_mutual_value_brief(profile: dict, kb: dict) -> dict:
-    """PATH B — MUTUAL VALUE BRIEF (SD 75-89)"""
+    """PATH B -- MUTUAL VALUE BRIEF (SD 75-89)"""
 
     dm = profile.get('decision_maker', {})
     first_name = ''
@@ -193,6 +223,7 @@ TODAY: {TODAY}
 FIRST NAME: "{first_name}"
 
 SUPPLIER: {kb.get('company_name')}
+{_seed_block(kb)}
 Products: {kb.get('profile', {}).get('product_catalogue', '')}
 Differentiators: {kb.get('profile', {}).get('technical_differentiators', '')}
 Case studies: {kb.get('profile', {}).get('case_studies', '')}
@@ -219,10 +250,10 @@ Write a mutual value brief using markdown headings and bullet points.
 [2-3 sentences: what we know about their context and why this supplier is relevant]
 
 ### What {kb.get('company_name')} Offers
-[3-4 specific capabilities matched to their situation — with real product names and specs]
+[3-4 specific capabilities matched to their situation -- with real product names and specs]
 
 ### The Fit
-[Why this is a strong match — specific, not generic]
+[Why this is a strong match -- specific, not generic]
 ===END_BRIEF===
 
 ===QUESTIONS===
@@ -244,7 +275,7 @@ Each must be specific to what we know about this prospect.
 
 
 async def generate_first_signal(profile: dict, kb: dict) -> dict:
-    """PATH C — FIRST SIGNAL (SD 60-74). One email only."""
+    """PATH C -- FIRST SIGNAL (SD 60-74). One email only."""
 
     dm = profile.get('decision_maker', {})
     first_name = ''
@@ -259,6 +290,7 @@ TODAY: {TODAY}
 FIRST NAME: "{first_name}"
 
 SUPPLIER: {kb.get('company_name')}
+{_seed_block(kb)}
 Products: {kb.get('profile', {}).get('product_catalogue', '')}
 
 PROSPECT: {profile.get('company_overview', '')}

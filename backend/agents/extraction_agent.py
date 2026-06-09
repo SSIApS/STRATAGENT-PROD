@@ -1,5 +1,5 @@
 """
-STRATAGENT — Extraction Agent
+STRATAGENT -- Extraction Agent
 Extracts structured intelligence from PDFs, URLs, and web research.
 Feeds the Knowledge Base module.
 """
@@ -26,17 +26,17 @@ Search the web thoroughly. Return a JSON object with these exact keys:
   "product_catalogue": "complete list of products, variants, applications",
   "technical_differentiators": "what makes them genuinely better in specific situations",
   "certifications": "ISO, ATEX, CE, REACH, DNV, and any others found",
-  "case_studies": "reference projects or applications found — named or sector",
+  "case_studies": "reference projects or applications found -- named or sector",
   "competitive_positioning": "how they compare to alternatives, where they win",
-  "pricing_framework": "pricing structure or range if findable — never guess",
+  "pricing_framework": "pricing structure or range if findable -- never guess",
   "reference_projects": "specific named projects or installations if findable",
   "objections_responses": "common objections in this product category",
   "buyer_profiles": "who buys this, why, what triggers a purchase",
-  "confidence_notes": "what you found vs what you inferred — be specific"
+  "confidence_notes": "what you found vs what you inferred -- be specific"
 }}
 
 Rules:
-- Only include verified information. Flag inferences with ⚠️
+- Only include verified information. Flag inferences with [!]️
 - If a field cannot be populated from available sources, return null
 - Do not invent or guess pricing
 - Return only the JSON object, no other text
@@ -71,7 +71,7 @@ Return a JSON object with these exact keys (null if not found in document):
 
 Rules:
 - Extract only what is explicitly stated in the document
-- Flag any inference with ⚠️
+- Flag any inference with [!]️
 - Return only the JSON object
 """
     response = await generate(prompt, temperature=0.1)
@@ -107,7 +107,7 @@ Return a JSON object with these exact keys (null if not found):
   "certifications": "certifications or standards mentioned",
   "case_studies": "case studies or customer references",
   "competitive_positioning": "competitive claims or differentiators",
-  "pricing_framework": "pricing if mentioned — include retail price, volume tiers, currency",
+  "pricing_framework": "pricing if mentioned -- include retail price, volume tiers, currency",
   "distribution_channels": "if this is a retailer or distributor page: channel name, brand used (original or private label), price point, buyer segment served, volume pricing tiers",
   "reference_projects": "named projects or clients",
   "objections_responses": "FAQs or common questions addressed"
@@ -124,12 +124,12 @@ def score_intelligence_depth(profile: dict) -> dict:
     Score each KB element based on content quality, not just length.
 
     Scoring model (per element):
-      - Presence tier  (0 → 0.5): is anything there at all?
+      - Presence tier  (0 -> 0.5): is anything there at all?
       - Depth bonus    (up to 0.2): multiple paragraphs / accumulated sources
       - Key terms      (up to 0.15): domain-specific terms that signal real intelligence
       - Specificity    (up to 0.15): numbers, model codes, named entities, measurements
 
-    Each element score = quality_ratio (0.0–1.0) × element max weight.
+    Each element score = quality_ratio (0.0-1.0) × element max weight.
     Total max = 100.
     """
     import re
@@ -215,7 +215,7 @@ def score_intelligence_depth(profile: dict) -> dict:
             return 0.0
         length = len(text)
 
-        # 1. Presence tier — baseline from length
+        # 1. Presence tier -- baseline from length
         if length < 30:
             presence = 0.15
         elif length < 100:
@@ -225,17 +225,17 @@ def score_intelligence_depth(profile: dict) -> dict:
         else:
             presence = 0.50   # max from presence alone
 
-        # 2. Depth bonus — reward accumulated content (multiple paragraphs/sources)
+        # 2. Depth bonus -- reward accumulated content (multiple paragraphs/sources)
         paragraph_count = len([p for p in text.split("\n\n") if p.strip()])
         depth = min(0.20, paragraph_count * 0.04)
 
-        # 3. Key terms — domain-specific vocabulary for this element
+        # 3. Key terms -- domain-specific vocabulary for this element
         terms = KEY_TERMS.get(element, [])
         text_lower = text.lower()
         term_hits = sum(1 for t in terms if t.lower() in text_lower)
         key_term_score = min(0.15, term_hits * 0.025)
 
-        # 4. Specificity — numbers, codes, measurements, named entities
+        # 4. Specificity -- numbers, codes, measurements, named entities
         spec_hits = sum(
             len(re.findall(pattern, text, re.IGNORECASE))
             for pattern in SPECIFICITY_PATTERNS

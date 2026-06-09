@@ -147,7 +147,13 @@ export default function FieldIntelligence({ session }: { session: Session }) {
   const [outputLoading, setOutputLoading] = useState(false)
   const [outputResult, setOutputResult] = useState<any>(null)
   const [exportLoading, setExportLoading] = useState(false)
+  const [includeBuyingSignals, setIncludeBuyingSignals] = useState(false)
+  const [includeReasoning, setIncludeReasoning] = useState(false)
   const [historyExpanded, setHistoryExpanded] = useState(false)
+  const [profileHistory, setProfileHistory] = useState<any[]>([])
+  const [showProfilePicker, setShowProfilePicker] = useState(false)
+  const [researchQueue, setResearchQueue] = useState<any[]>([])
+  const [queueActionId, setQueueActionId] = useState<string | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -174,37 +180,103 @@ export default function FieldIntelligence({ session }: { session: Session }) {
     }).catch(() => {})
   }, [])
 
-  // When supplier changes, load their most recent FI result
+  // When supplier changes, fetch their saved research history (for the picker).
+  // We only AUTO-restore a result when STRATASCOUT/STRATADAR explicitly promoted
+  // a specific company into FI -- otherwise the form starts blank, and Jason can
+  // browse/reopen any past run from the "Past Research" picker below.
   useEffect(() => {
     if (!supplierId) return
     if (result && result.supplier_id === supplierId) return // already showing right supplier
-    // If router state promoted a specific company, don't restore a different old result
     const promotedCompany = (location.state as any)?.company_name
     api.get('/field-intelligence/profiles/' + supplierId)
       .then(res => {
-        const profiles = res.data || []
-        if (profiles.length > 0) {
-          // Most recent first
-          const latest = profiles.sort((a: any, b: any) =>
-            (b.updated_at || 0) - (a.updated_at || 0)
-          )[0]
-          // Don't restore old result if a new company was promoted into FI
-          if (promotedCompany && latest.company_name !== promotedCompany) return
-          // Map stored profile to result format
-          setResult({
-            profile_id: latest.profile_id,
-            company_name: latest.company_name,
-            convergence_index: latest.convergence_index,
-            recommended_path: latest.recommended_path,
-            profile: latest.profile,
-            supplier_id: latest.supplier_id,
-            _restored: true,
-          })
-          setCompanyName(latest.company_name || '')
+        const profiles = (res.data || []).slice().sort((a: any, b: any) =>
+          (b.updated_at || 0) - (a.updated_at || 0)
+        )
+        setProfileHistory(profiles)
+        if (profiles.length === 0) return
+        if (promotedCompany) {
+          const match = profiles.find((p: any) => p.company_name === promotedCompany)
+          if (match) loadProfileIntoResult(match)
         }
       })
       .catch(() => {})
   }, [supplierId])
+
+  // Load the Retry Queue -- failed research attempts saved so nothing typed is lost
+  // when the AI service returns a transient 503 (high demand).
+  function refreshResearchQueue() {
+    if (!supplierId) return
+    api.get('/field-intelligence/research-queue/' + supplierId)
+      .then(res => setResearchQueue(res.data || []))
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    refreshResearchQueue()
+  }, [supplierId])
+
+  async function retryQueueEntry(entryId: string) {
+    setQueueActionId(entryId)
+    try {
+      const res = await api.post('/field-intelligence/research-queue/' + entryId + '/retry')
+      setResult(res.data)
+      refreshResearchQueue()
+    } catch (e: any) {
+      const detail = e.response?.data?.detail
+      alert((detail && detail.message) || detail || 'Retry failed -- still overloaded, try again shortly')
+      refreshResearchQueue()
+    } finally {
+      setQueueActionId(null)
+    }
+  }
+
+  async function dismissQueueEntry(entryId: string) {
+    setQueueActionId(entryId)
+    try {
+      await api.delete('/field-intelligence/research-queue/' + entryId)
+      setResearchQueue(q => q.filter(item => item.id !== entryId))
+    } catch {
+      refreshResearchQueue()
+    } finally {
+      setQueueActionId(null)
+    }
+  }
+
+  function formatQueueDate(value: any): string {
+    if (!value) return ''
+    try {
+      const ms = value > 1e12 ? value : value * 1000
+      return new Date(ms).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return ''
+    }
+  }
+
+  function loadProfileIntoResult(p: any) {
+    setResult({
+      profile_id: p.profile_id,
+      company_name: p.company_name,
+      convergence_index: p.convergence_index,
+      recommended_path: p.recommended_path,
+      profile: p.profile,
+      supplier_id: p.supplier_id,
+      _restored: true,
+    })
+    setOutputResult(null)
+    setCompanyName(p.company_name || '')
+    setShowProfilePicker(false)
+  }
+
+  function formatProfileDate(value: any): string {
+    if (!value) return ''
+    try {
+      const ms = value > 1e12 ? value : value * 1000
+      return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    } catch {
+      return ''
+    }
+  }
 
   const selectedSupplier = suppliers.find(
     s => (s.supplier_id || s.id) === supplierId
@@ -237,6 +309,8 @@ export default function FieldIntelligence({ session }: { session: Session }) {
           convergence_index: outputResult.convergence_index,
           supplier_name: selectedSupplier?.company_name || '',
           output: outputResult.output,
+          include_buying_signals: includeBuyingSignals,
+          include_reasoning: includeReasoning,
         },
         { responseType: 'blob' }
       )
@@ -275,7 +349,10 @@ export default function FieldIntelligence({ session }: { session: Session }) {
       })
       setResult(res.data)
     } catch (e: any) {
-      alert(e.response?.data?.detail?.message || e.response?.data?.detail || 'Research failed')
+      const detail = e.response?.data?.detail
+      alert((detail && detail.message) || detail || 'Research failed')
+      // A 503 (AI overload) gets queued for retry server-side -- refresh so it shows up below.
+      refreshResearchQueue()
     } finally {
       setLoading(false)
     }
@@ -345,6 +422,100 @@ export default function FieldIntelligence({ session }: { session: Session }) {
             )}
           </div>
 
+          {profileHistory.length > 0 && (
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--stratagent-border)' }}>
+              <button
+                type="button"
+                onClick={() => setShowProfilePicker(s => !s)}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-left"
+                style={{ background: 'var(--stratagent-dark)' }}>
+                <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--stratagent-muted)' }}>
+                  Past Research for {selectedSupplier?.company_name || 'this supplier'}
+                  <span className="ml-2 px-2 py-0.5 rounded-full text-xs normal-case tracking-normal"
+                        style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                    {profileHistory.length} saved
+                  </span>
+                </span>
+                <span className="text-xs" style={{ color: 'var(--stratagent-gold)' }}>
+                  {showProfilePicker ? 'Hide' : 'Browse'}
+                </span>
+              </button>
+              {showProfilePicker && (
+                <div className="px-3 py-2 space-y-1.5" style={{ background: 'var(--stratagent-panel)' }}>
+                  {profileHistory.map((p: any) => (
+                    <button
+                      key={p.profile_id}
+                      type="button"
+                      onClick={() => loadProfileIntoResult(p)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-left"
+                      style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                      <div>
+                        <div className="font-semibold text-sm" style={{ color: 'var(--stratagent-text)' }}>
+                          {p.company_name}
+                        </div>
+                        <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                          {formatProfileDate(p.updated_at)}
+                        </div>
+                      </div>
+                      {p.convergence_index != null && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                              style={{ background: '#1c1400', color: 'var(--stratagent-gold)', border: '1px solid #92400e' }}>
+                          CI {p.convergence_index}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {researchQueue.length > 0 && (
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid #92400e' }}>
+              <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: '#2d1a00' }}>
+                <span className="text-xs uppercase tracking-widest" style={{ color: '#f59e0b' }}>
+                  Retry Queue -- {researchQueue.length} request{researchQueue.length === 1 ? '' : 's'} saved after AI overload
+                </span>
+              </div>
+              <div className="px-3 py-2 space-y-1.5" style={{ background: 'var(--stratagent-panel)' }}>
+                {researchQueue.map((q: any) => (
+                  <div key={q.id}
+                       className="flex items-center justify-between px-3 py-2 rounded-lg"
+                       style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                    <div>
+                      <div className="font-semibold text-sm" style={{ color: 'var(--stratagent-text)' }}>
+                        {q.company_name}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                        Last attempt {formatQueueDate(q.last_attempt_at || q.requested_at)} -- {(q.error || '').includes('503') || (q.error || '').toLowerCase().includes('high demand')
+                          ? 'AI service overloaded (503)'
+                          : 'failed -- ' + (q.error || 'unknown error').slice(0, 80)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => retryQueueEntry(q.id)}
+                        disabled={queueActionId === q.id}
+                        className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40"
+                        style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                        {queueActionId === q.id ? 'Retrying...' : 'Retry'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => dismissQueueEntry(q.id)}
+                        disabled={queueActionId === q.id}
+                        className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40"
+                        style={{ background: 'transparent', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs uppercase tracking-widest mb-2"
                    style={{ color: 'var(--stratagent-muted)' }}>
@@ -401,6 +572,16 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                   via {suppliers.find(s => (s.supplier_id || s.id) === result.supplier_id)?.company_name}
                 </span>
               )}
+              <div className="mt-1">
+                {result.profile?.website ? (
+                  <a href={result.profile.website} target="_blank" rel="noopener noreferrer"
+                     className="text-xs hover:underline" style={{ color: 'var(--stratagent-muted)' }}>
+                    {result.profile.website.replace(/^https?:\/\//, '')}
+                  </a>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>No URL found</span>
+                )}
+              </div>
             </div>
             <button
               onClick={() => {
@@ -557,12 +738,43 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                 </div>
               </div>
 
+              <div className="flex items-center gap-4 print:hidden" style={{ marginBottom: '0.5rem' }}>
+                <label className="text-xs flex items-center gap-1.5 cursor-pointer" style={{ color: 'var(--stratagent-text)' }}>
+                  <input
+                    type="checkbox"
+                    checked={includeBuyingSignals}
+                    onChange={(e) => setIncludeBuyingSignals(e.target.checked)}
+                  />
+                  Include Buying Signals in export
+                </label>
+                <label className="text-xs flex items-center gap-1.5 cursor-pointer" style={{ color: 'var(--stratagent-text)' }}>
+                  <input
+                    type="checkbox"
+                    checked={includeReasoning}
+                    onChange={(e) => setIncludeReasoning(e.target.checked)}
+                  />
+                  Include Score Reasoning in export
+                </label>
+              </div>
+
               <div className="flex items-center gap-3 print:hidden">
                 <button
                   onClick={generateOutput}
                   className="text-xs px-3 py-1.5 rounded font-semibold"
                   style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-gold)' }}>
                   Regenerate
+                </button>
+                <button
+                  onClick={exportBrief}
+                  disabled={exportLoading}
+                  className="text-xs px-3 py-1.5 rounded font-semibold flex items-center gap-1.5"
+                  style={{ background: 'var(--stratagent-gold)', color: '#000', opacity: exportLoading ? 0.6 : 1 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  {exportLoading ? 'Exporting...' : 'Export .docx'}
                 </button>
                 <button
                   onClick={() => {
@@ -576,7 +788,7 @@ export default function FieldIntelligence({ session }: { session: Session }) {
                     document.title = prev
                   }}
                   className="text-xs px-3 py-1.5 rounded font-semibold flex items-center gap-1.5"
-                  style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                  style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-gold)' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="6 9 6 2 18 2 18 9"/>
                     <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>

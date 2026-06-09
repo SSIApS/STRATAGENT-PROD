@@ -9,6 +9,7 @@ COLLECTIONS:
   outcome_memory/           -- Learning layer records
   demo_sessions/            -- Demo gate counters
   product_images/           -- Tagged product/brand images per supplier
+  affiliate_research_runs/  -- STRATALINK saved searches + per-program selection flags
 """
 from google.cloud import firestore
 from typing import Optional
@@ -66,6 +67,34 @@ def list_relationship_profiles(supplier_id: str) -> list:
         .stream()
     )
     return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
+# -- PENDING RESEARCH QUEUE (failed/queued FI runs, saved for retry) --
+
+def save_pending_research(entry_id: str, data: dict) -> str:
+    ref = db.collection("pending_research").document(entry_id)
+    ref.set({**data, "updated_at": time.time()}, merge=True)
+    return entry_id
+
+
+def get_pending_research(entry_id: str) -> Optional[dict]:
+    doc = db.collection("pending_research").document(entry_id).get()
+    return {"id": doc.id, **doc.to_dict()} if doc.exists else None
+
+
+def list_pending_research(supplier_id: str) -> list:
+    docs = (
+        db.collection("pending_research")
+        .where("supplier_id", "==", supplier_id)
+        .stream()
+    )
+    results = [{"id": d.id, **d.to_dict()} for d in docs]
+    results.sort(key=lambda x: -x.get("requested_at", 0))
+    return results
+
+
+def delete_pending_research(entry_id: str) -> None:
+    db.collection("pending_research").document(entry_id).delete()
 
 
 def list_all_relationship_profiles(limit: int = 200) -> list:
@@ -153,14 +182,22 @@ def save_product_image(image_id: str, data: dict) -> str:
     return image_id
 
 
+def delete_product_image(image_id: str) -> None:
+    db.collection("product_images").document(image_id).delete()
+
+
 def get_product_images(supplier_id: str) -> list:
+    # NOTE: where() + order_by() on different fields requires a Firestore
+    # composite index and raises FailedPrecondition (surfaces as a 500) if
+    # one isn't created. Established pattern: filter in Firestore, sort in Python.
     docs = (
         db.collection("product_images")
         .where("supplier_id", "==", supplier_id)
-        .order_by("uploaded_at", direction=firestore.Query.DESCENDING)
         .stream()
     )
-    return [{"id": d.id, **d.to_dict()} for d in docs]
+    images = [{"id": d.id, **d.to_dict()} for d in docs]
+    images.sort(key=lambda img: img.get("uploaded_at", 0), reverse=True)
+    return images
 
 
 def search_product_images(supplier_id: str, query: str) -> list:
@@ -258,6 +295,49 @@ def list_affiliate_referrals(status: str = None) -> list:
     docs = [{"id": d.id, **d.to_dict()} for d in query.stream()]
     docs.sort(key=lambda x: x.get("referred_at", 0), reverse=True)
     return docs
+
+
+# -- AFFILIATE RESEARCH RUNS (STRATALINK search history + selection) --
+
+def save_affiliate_research_run(run_id: str, data: dict) -> str:
+    db.collection("affiliate_research_runs").document(run_id).set(
+        {**data, "updated_at": time.time()}, merge=True
+    )
+    return run_id
+
+def get_affiliate_research_run(run_id: str) -> Optional[dict]:
+    doc = db.collection("affiliate_research_runs").document(run_id).get()
+    return doc.to_dict() if doc.exists else None
+
+def list_affiliate_research_runs(category: str = None) -> list:
+    query = db.collection("affiliate_research_runs")
+    if category:
+        query = query.where("category", "==", category)
+    docs = [{"id": d.id, **d.to_dict()} for d in query.stream()]
+    docs.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+    return docs
+
+def update_research_run_program(run_id: str, program_id: str, updates: dict) -> Optional[dict]:
+    """Patch a single program entry inside a saved research run (e.g. mark selected/dismissed)."""
+    run = get_affiliate_research_run(run_id)
+    if not run:
+        return None
+    programs = run.get("programs", [])
+    found = False
+    for p in programs:
+        if p.get("program_id") == program_id:
+            p.update(updates)
+            found = True
+            break
+    if not found:
+        return None
+    db.collection("affiliate_research_runs").document(run_id).set(
+        {"programs": programs, "updated_at": time.time()}, merge=True
+    )
+    return next(p for p in programs if p.get("program_id") == program_id)
+
+def delete_affiliate_research_run(run_id: str):
+    db.collection("affiliate_research_runs").document(run_id).delete()
 
 
 # -- PROSPECT POOL (STRATASCOUT) --

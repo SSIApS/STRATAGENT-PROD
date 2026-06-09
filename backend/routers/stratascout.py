@@ -1,5 +1,5 @@
 """
-STRATAGENT — STRATASCOUT Router
+STRATAGENT -- STRATASCOUT Router
 Proactive prospect hunting, Prospect Pool management.
 """
 from fastapi import APIRouter, HTTPException, Header
@@ -33,7 +33,7 @@ async def list_geographies():
 @router.post("/hunt")
 async def run_hunt(payload: HuntRequest, x_session_id: str = Header(...)):
     """
-    Run a STRATASCOUT hunt — find prospects matching the supplier KB
+    Run a STRATASCOUT hunt -- find prospects matching the supplier KB
     within the specified geography zone.
     Deposits results to the Prospect Pool.
     """
@@ -54,7 +54,7 @@ async def run_hunt(payload: HuntRequest, x_session_id: str = Header(...)):
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "INTELLIGENCE GAP — Knowledge Base below 50%. Enrich the supplier KB before hunting prospects.",
+                "message": "INTELLIGENCE GAP -- Knowledge Base below 50%. Enrich the supplier KB before hunting prospects.",
                 "intelligence_depth": intel_total,
                 "required": 50,
             }
@@ -82,7 +82,7 @@ async def run_hunt(payload: HuntRequest, x_session_id: str = Header(...)):
             }
         )
     except Exception as e:
-        # Catch-all — return the real error instead of crashing the server
+        # Catch-all -- return the real error instead of crashing the server
         raise HTTPException(
             status_code=500,
             detail={"message": f"STRATASCOUT error: {type(e).__name__}: {str(e)}"}
@@ -133,7 +133,7 @@ async def get_pool(supplier_id: Optional[str] = None, status: Optional[str] = No
 @router.post("/pool/{pool_id}/promote")
 async def promote_prospect(pool_id: str, x_session_id: str = Header(...)):
     """
-    Promote a prospect from the pool — marks it for full Field Intelligence run.
+    Promote a prospect from the pool -- marks it for full Field Intelligence run.
     Returns the supplier_id and company_name needed to trigger FI.
     """
     entry = db.get_prospect_pool_entry(pool_id)
@@ -153,7 +153,7 @@ async def promote_prospect(pool_id: str, x_session_id: str = Header(...)):
 
 @router.post("/pool/{pool_id}/dismiss")
 async def dismiss_prospect(pool_id: str):
-    """Dismiss a prospect — removed from active pool, logged for pattern learning."""
+    """Dismiss a prospect -- removed from active pool, logged for pattern learning."""
     entry = db.get_prospect_pool_entry(pool_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Prospect Pool entry not found")

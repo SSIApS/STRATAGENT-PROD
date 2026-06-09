@@ -16,8 +16,17 @@ export interface Session {
   actionsRemaining: number
 }
 
+// Local-dev / automation bypass for the demo access-code gate.
+// Set VITE_SKIP_DEMO_GATE=true in a local .env to skip the lock screen
+// (e.g. for the scheduled Active Watch scan, which opens a fresh,
+// unauthenticated browser tab every morning). Supplies a stand-in session —
+// the backend auto-creates a Firestore demo_sessions doc for any session id
+// it hasn't seen, so this works exactly like a real login.
+const AUTO_SESSION: Session = { sessionId: 'local-automation-session', actionsRemaining: 999999 }
+
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null)
+  const skipGate = import.meta.env.VITE_SKIP_DEMO_GATE === 'true'
+  const [session, setSession] = useState<Session | null>(skipGate ? AUTO_SESSION : null)
 
   if (!session) {
     return <DemoGate onAuthenticated={setSession} />
