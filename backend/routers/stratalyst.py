@@ -18,8 +18,19 @@ import asyncio
 
 from services import firestore as db
 from services.demo_gate import check_and_increment
-from agents.stratalyst_agent import research_gaps, ingest_approved_sources, classify_human_intel, generate_interview_questions, synthesise_profile
+from agents.stratalyst_agent import (
+    research_gaps, ingest_approved_sources, classify_human_intel,
+    generate_interview_questions, synthesise_profile, build_intelligence_seed,
+)
 from agents.extraction_agent import score_intelligence_depth
+
+
+def _threshold_label(total: float) -> str:
+    """Map Intelligence Depth total (0-100) to readiness label."""
+    if total >= 90: return "SINGULARITY READY"
+    if total >= 80: return "PROPOSAL READY"
+    if total >= 50: return "VALUE BRIEF READY"
+    return "INTELLIGENCE GAP"
 
 
 async def _background_synthesise(supplier_id: str, trigger_content: str, trigger_type: str):
@@ -426,4 +437,158 @@ async def deep_scan_website(
         "depth_gain": round(total - old_total, 1),
         "threshold_status": _threshold_label(total),
         "urls_crawled": crawl_result.get("urls", []),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Intelligence Seed endpoints (6-block agentic seed)
+# ---------------------------------------------------------------------------
+
+@router.post("/{supplier_id}/build-seed")
+async def build_seed(
+    supplier_id: str,
+    x_session_id: str = Header(...),
+):
+    """
+    STRATALYST Seed Builder: run 3 parallel grounded searches to populate
+    all 6 intelligence blocks for this supplier.
+    Stores result as intelligence_seed in Firestore alongside manual_seed.
+    Takes 30-60s to complete.
+    """
+    await check_and_increment(x_session_id)
+
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+
+    try:
+        seed = await build_intelligence_seed(
+            company_name=kb["company_name"],
+            website_url=kb.get("website_url"),
+            existing_profile=kb.get("profile", {}),
+            existing_seed=kb.get("manual_seed", {}),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Seed build failed: {str(e)}")
+
+    db.save_knowledge_base(supplier_id, {"intelligence_seed": seed})
+
+    completeness = seed.get("_meta", {}).get("completeness_pct", 0)
+    filled = sum(
+        1 for block in ["identity", "buyer_intelligence", "commercial_reality",
+                         "winning_conditions", "signal_recognition"]
+        for f in seed.get(block, {}).values()
+        if f.get("value")
+    )
+
+    return {
+        "status": "complete",
+        "supplier_id": supplier_id,
+        "company_name": kb["company_name"],
+        "completeness_pct": completeness,
+        "fields_populated": filled,
+        "last_built": seed.get("_meta", {}).get("last_built", ""),
+        "intelligence_seed": seed,
+    }
+
+
+class VerifyFieldRequest(BaseModel):
+    block: str       # e.g. "identity"
+    field: str       # e.g. "product_plain"
+    value: str       # Jason's override value
+    note: Optional[str] = ""
+
+
+@router.patch("/{supplier_id}/verify-field")
+async def verify_seed_field(
+    supplier_id: str,
+    payload: VerifyFieldRequest,
+):
+    """
+    Jason verifies or overrides a single intelligence_seed field.
+    Sets jason_verified=True and confidence=high on the field.
+    The jason_verified flag means this value wins over any future agent re-build.
+    """
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+
+    seed = kb.get("intelligence_seed") or {}
+    if not seed:
+        raise HTTPException(
+            status_code=400,
+            detail="No intelligence seed found. Run Build Seed first."
+        )
+
+    block = payload.block
+    field = payload.field
+    if block not in seed or field not in seed.get(block, {}):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Field {block}.{field} not found in intelligence seed."
+        )
+
+    seed[block][field] = {
+        "value": payload.value.strip(),
+        "source": "jason_verified",
+        "confidence": "high",
+        "jason_verified": True,
+        "jason_only": seed[block][field].get("jason_only", False),
+    }
+    if payload.note:
+        seed[block][field]["note"] = payload.note.strip()
+
+    db.save_knowledge_base(supplier_id, {"intelligence_seed": seed})
+
+    return {
+        "status": "verified",
+        "block": block,
+        "field": field,
+        "value": payload.value.strip(),
+    }
+
+
+class RecommendFieldRequest(BaseModel):
+    field_name: str
+    rationale: str
+    suggested_by: str   # agent name: "research_agent", "stratascout", "strategist"
+    draft_value: Optional[str] = ""
+
+
+@router.post("/{supplier_id}/recommend-field")
+async def recommend_seed_field(
+    supplier_id: str,
+    payload: RecommendFieldRequest,
+):
+    """
+    An agent recommends a new field that would improve seed quality.
+    Adds to the recommended_fields queue for Jason to review.
+    """
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+
+    seed = kb.get("intelligence_seed") or {}
+    if not seed:
+        seed = {"recommended_fields": []}
+
+    recommendations = seed.get("recommended_fields", [])
+
+    # Avoid duplicates
+    existing = [r for r in recommendations if r.get("field_name") == payload.field_name]
+    if not existing:
+        recommendations.append({
+            "field_name": payload.field_name,
+            "rationale": payload.rationale,
+            "suggested_by": payload.suggested_by,
+            "draft_value": payload.draft_value or "",
+            "status": "pending",
+        })
+        seed["recommended_fields"] = recommendations
+        db.save_knowledge_base(supplier_id, {"intelligence_seed": seed})
+
+    return {
+        "status": "queued",
+        "field_name": payload.field_name,
+        "suggested_by": payload.suggested_by,
     }

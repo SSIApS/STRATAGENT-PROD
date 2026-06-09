@@ -607,6 +607,290 @@ async def crawl_supplier_website(
     }
 
 
+def _field(value: str, source: str, confidence: str, jason_only: bool = False) -> dict:
+    """Build a standard intelligence_seed field entry."""
+    return {
+        "value": value,
+        "source": source,
+        "confidence": confidence,
+        "jason_verified": jason_only,
+        "jason_only": jason_only,
+    }
+
+
+def _empty_field(reason: str = "") -> dict:
+    """Empty field placeholder -- agent could not populate this."""
+    return {
+        "value": "",
+        "source": "not_found",
+        "confidence": "low",
+        "jason_verified": False,
+        "jason_only": False,
+        "note": reason,
+    }
+
+
+def _build_empty_seed() -> dict:
+    """Return the full intelligence_seed skeleton with all fields empty."""
+    empty = lambda: _empty_field()
+    return {
+        "_meta": {"last_built": "", "build_method": "agentic", "completeness_pct": 0},
+        "identity": {
+            "product_plain": empty(), "not_this": empty(),
+            "problem_solved": empty(), "key_specs": empty(), "certifications": empty(),
+        },
+        "buyer_intelligence": {
+            "buyer_type": empty(), "decision_maker": empty(),
+            "influencer": empty(), "use_case": empty(), "procurement_path": empty(),
+        },
+        "commercial_reality": {
+            "deal_size": empty(), "relationship_model": empty(),
+            "sales_cycle": empty(), "geography": empty(), "minimum_threshold": empty(),
+        },
+        "winning_conditions": {
+            "we_win_when": empty(), "we_lose_when": empty(),
+            "differentiator": empty(), "common_objections": empty(), "proof_points": empty(),
+        },
+        "signal_recognition": {
+            "trigger_events": empty(), "tender_keywords": empty(),
+            "capex_indicators": empty(), "regulatory_drivers": empty(), "seasonal_patterns": empty(),
+        },
+        "ssi_context": {
+            "why_ssi": _field("", "jason_only", "low", jason_only=True),
+            "target_markets": _field("", "jason_only", "low", jason_only=True),
+            "ssi_positioning": _field("", "jason_only", "low", jason_only=True),
+            "existing_customer_types": empty(),
+        },
+        "recommended_fields": [],
+    }
+
+
+def _parse_block_response(response: str) -> dict:
+    """Parse a block-level JSON response from Gemini."""
+    import json, re
+    try:
+        cleaned = re.sub(r"```(?:json)?\n?", "", response).strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(cleaned[start:end])
+    except Exception:
+        pass
+    return {}
+
+
+def _wrap_fields(raw: dict, source: str = "web_search") -> dict:
+    """
+    Take a flat dict of {field_name: "value string"} from Gemini
+    and wrap each value in the standard field structure.
+    Empty/null values become _empty_field().
+    """
+    wrapped = {}
+    for key, val in raw.items():
+        if val and isinstance(val, str) and val.strip():
+            confidence = "high" if len(val) > 80 else "medium"
+            wrapped[key] = _field(val.strip(), source, confidence)
+        else:
+            wrapped[key] = _empty_field()
+    return wrapped
+
+
+async def build_intelligence_seed(
+    company_name: str,
+    website_url: str = None,
+    existing_profile: dict = None,
+    existing_seed: dict = None,
+) -> dict:
+    """
+    Agentic seed builder -- populates all 6 intelligence blocks for a supplier.
+
+    Runs 3 parallel grounded searches:
+    - Block A: Identity + Buyer Intelligence
+    - Block B: Commercial Reality + Winning Conditions
+    - Block C: Signal Recognition
+
+    SSI Context fields are marked jason_only -- only Jason can fill these.
+
+    Returns a complete intelligence_seed dict ready for Firestore storage.
+    """
+    import asyncio
+    from datetime import datetime, timezone
+
+    seed = _build_empty_seed()
+    profile = existing_profile or {}
+    prior_seed = existing_seed or {}
+
+    # Build context from existing data to avoid re-inventing what we know
+    site_hint = f"Website: {website_url}" if website_url else ""
+    prior_hint = ""
+    if prior_seed.get("product_plain"):
+        prior_hint = f"Known: {prior_seed['product_plain']}"
+
+    profile_context = ""
+    for key in ["product_catalogue", "company_overview", "technical_datasheets", "certifications"]:
+        val = profile.get(key)
+        if val:
+            profile_context += f"\n- {key}: {str(val)[:300]}"
+
+    # -- PROMPT A: Identity + Buyer Intelligence --
+    prompt_a = f"""
+You are STRATALYST building a commercial intelligence seed for a supplier.
+COMPANY: {company_name}
+{site_hint}
+{prior_hint}
+EXISTING PROFILE EXTRACTS:{profile_context or " None yet."}
+
+Search the web thoroughly. Visit their website. Find technical documents, case studies, brochures,
+LinkedIn company page, industry directories, and any published certification lists.
+
+Extract and return ONLY this JSON -- no other text:
+{{
+  "product_plain": "What does this company literally sell? 1-2 plain sentences, no marketing.",
+  "not_this": "What could someone confuse this product with? Name the most likely misclassification and rule it out explicitly.",
+  "problem_solved": "What operational or business problem does the buyer have before finding this product?",
+  "key_specs": "The 2-4 technical or commercial specifications that matter most in a sales conversation. Be specific -- temperatures, ratings, sizes, capacities, materials.",
+  "certifications": "List all quality, safety, or industry certifications found. Include standard numbers if available.",
+  "buyer_type": "Who are the actual buyers? Job titles and company types.",
+  "decision_maker": "Who typically has purchasing authority? Job title(s).",
+  "influencer": "Who specifies or recommends this product internally? Engineers, consultants, safety managers?",
+  "use_case": "What do buyers do with this product? One literal sentence.",
+  "procurement_path": "How does a typical purchase happen? Tender, direct order, framework agreement, distributor?"
+}}
+
+Rules:
+- Specific facts only -- no vague marketing language
+- If you cannot find a field with confidence, return an empty string ""
+- Never invent or hallucinate. Accuracy over completeness.
+- Return only the JSON object.
+"""
+
+    # -- PROMPT B: Commercial Reality + Winning Conditions --
+    prompt_b = f"""
+You are STRATALYST building a commercial intelligence seed for a supplier.
+COMPANY: {company_name}
+{site_hint}
+{prior_hint}
+
+Search for commercial terms, competitor comparisons, case studies, distributor information,
+and any published information about deal sizes, project scopes, or geographic reach.
+
+Extract and return ONLY this JSON -- no other text:
+{{
+  "deal_size": "Rough order magnitude of a typical deal. e.g. EUR 5k-50k per project. Base on known project types, not guesses.",
+  "relationship_model": "One-off purchase, recurring/repeat, project-based, retainer, or framework contract?",
+  "sales_cycle": "Typical time from first contact to signed order. Estimate based on product complexity.",
+  "geography": "Where does this supplier sell and service? List countries or regions. Include hard constraints if known.",
+  "minimum_threshold": "Any minimum order quantity, project size, or scope that would disqualify a prospect?",
+  "we_win_when": "Under what specific conditions does this supplier win against alternatives? What situations favour them?",
+  "we_lose_when": "When do competitors win? What situations disfavour this supplier?",
+  "differentiator": "The single most important thing this supplier does better than alternatives.",
+  "common_objections": "What objections or concerns typically come up from buyers? List 2-3.",
+  "proof_points": "Reference case types that demonstrate credibility. Describe by type/industry, not client names."
+}}
+
+Rules:
+- Specific facts from real sources only
+- Empty string "" if not found with confidence
+- Never invent or hallucinate
+- Return only the JSON object.
+"""
+
+    # -- PROMPT C: Signal Recognition --
+    prompt_c = f"""
+You are STRATALYST identifying buying signal patterns for a supplier.
+COMPANY: {company_name}
+{site_hint}
+{prior_hint}
+
+Research the market context: what drives demand for this supplier's products?
+Look at industry publications, regulatory bodies, tender databases, trade associations,
+and news sources relevant to this product category.
+
+Extract and return ONLY this JSON -- no other text:
+{{
+  "trigger_events": "What events in a prospect's world create demand? e.g. new plant construction, fire damage, regulatory audit, leadership change in procurement, sustainability mandate. List 3-5 specific triggers.",
+  "tender_keywords": "Specific search terms to find relevant tenders or procurement notices. List 5-8 keywords.",
+  "capex_indicators": "What capital investment announcements signal a relevant project? e.g. new facility, equipment upgrade, expansion.",
+  "regulatory_drivers": "Any regulations, standards, or compliance deadlines that force procurement of this product type? Include regulation names/numbers if known.",
+  "seasonal_patterns": "Any timing patterns in when orders typically happen? Budget cycles, project seasons, maintenance windows?"
+}}
+
+Rules:
+- Industry-specific and factual
+- Empty string "" if not found
+- Return only the JSON object.
+"""
+
+    # Run all 3 in parallel
+    results = await asyncio.gather(
+        generate_with_grounding(prompt_a),
+        generate_with_grounding(prompt_b),
+        generate_with_grounding(prompt_c),
+        return_exceptions=True,
+    )
+
+    raw_a = _parse_block_response(results[0]) if not isinstance(results[0], Exception) else {}
+    raw_b = _parse_block_response(results[1]) if not isinstance(results[1], Exception) else {}
+    raw_c = _parse_block_response(results[2]) if not isinstance(results[2], Exception) else {}
+
+    # -- Assemble identity block --
+    for key in ["product_plain", "not_this", "problem_solved", "key_specs", "certifications"]:
+        val = raw_a.get(key, "")
+        if val:
+            seed["identity"][key] = _field(val, "web_search", "high" if len(val) > 60 else "medium")
+
+    # -- Assemble buyer_intelligence block --
+    for key in ["buyer_type", "decision_maker", "influencer", "use_case", "procurement_path"]:
+        val = raw_a.get(key, "")
+        if val:
+            seed["buyer_intelligence"][key] = _field(val, "web_search", "high" if len(val) > 60 else "medium")
+
+    # -- Assemble commercial_reality block --
+    for key in ["deal_size", "relationship_model", "sales_cycle", "geography", "minimum_threshold"]:
+        val = raw_b.get(key, "")
+        if val:
+            seed["commercial_reality"][key] = _field(val, "web_search", "medium")
+
+    # -- Assemble winning_conditions block --
+    for key in ["we_win_when", "we_lose_when", "differentiator", "common_objections", "proof_points"]:
+        val = raw_b.get(key, "")
+        if val:
+            seed["winning_conditions"][key] = _field(val, "web_search", "medium")
+
+    # -- Assemble signal_recognition block --
+    for key in ["trigger_events", "tender_keywords", "capex_indicators", "regulatory_drivers", "seasonal_patterns"]:
+        val = raw_c.get(key, "")
+        if val:
+            seed["signal_recognition"][key] = _field(val, "web_search", "medium")
+
+    # -- Carry forward existing manual_seed values as jason_verified --
+    if prior_seed.get("product_plain"):
+        seed["identity"]["product_plain"] = _field(prior_seed["product_plain"], "jason_manual", "high", jason_only=False)
+        seed["identity"]["product_plain"]["jason_verified"] = True
+    if prior_seed.get("buyer_type"):
+        seed["buyer_intelligence"]["buyer_type"] = _field(prior_seed["buyer_type"], "jason_manual", "high")
+        seed["buyer_intelligence"]["buyer_type"]["jason_verified"] = True
+    if prior_seed.get("use_case"):
+        seed["buyer_intelligence"]["use_case"] = _field(prior_seed["use_case"], "jason_manual", "high")
+        seed["buyer_intelligence"]["use_case"]["jason_verified"] = True
+    if prior_seed.get("not_this"):
+        seed["identity"]["not_this"] = _field(prior_seed["not_this"], "jason_manual", "high")
+        seed["identity"]["not_this"]["jason_verified"] = True
+
+    # -- Calculate completeness --
+    all_fields = []
+    for block_key in ["identity", "buyer_intelligence", "commercial_reality", "winning_conditions", "signal_recognition"]:
+        for field in seed[block_key].values():
+            all_fields.append(1 if field.get("value") else 0)
+    completeness = int(sum(all_fields) / len(all_fields) * 100) if all_fields else 0
+
+    from datetime import datetime, timezone
+    seed["_meta"]["last_built"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    seed["_meta"]["completeness_pct"] = completeness
+
+    return seed
+
+
 async def propose_seed_from_profile(
     company_name: str,
     profile: dict,

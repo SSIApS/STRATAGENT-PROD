@@ -72,6 +72,11 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   const [seedNotThis, setSeedNotThis] = useState('')
   const [seedSaving, setSeedSaving] = useState(false)
   const [draftSeed, setDraftSeed] = useState<any>(null)
+  const [buildingSeed, setBuildingSeed] = useState(false)
+  const [seedBuildResult, setSeedBuildResult] = useState<any>(null)
+  const [expandedSeedBlock, setExpandedSeedBlock] = useState<string | null>('identity')
+  const [verifyingField, setVerifyingField] = useState<{block: string, field: string} | null>(null)
+  const [verifyValue, setVerifyValue] = useState('')
   const [supplierOrder, setSupplierOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('stratagent_kb_order') || '[]') } catch { return [] }
   })
@@ -442,6 +447,34 @@ export default function KnowledgeBase({ session }: { session: Session }) {
     finally { setSeedSaving(false) }
   }
 
+  async function buildSeed() {
+    setBuildingSeed(true)
+    setSeedBuildResult(null)
+    try {
+      const res = await api.post('/stratalyst/' + kb.supplier_id + '/build-seed', {}, {
+        headers: { 'x-session-id': session.sessionId }
+      })
+      setSeedBuildResult(res.data)
+      setKb((prev: any) => ({ ...prev, intelligence_seed: res.data.intelligence_seed }))
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Seed build failed — try again')
+    } finally { setBuildingSeed(false) }
+  }
+
+  async function verifySeedField(block: string, field: string, value: string) {
+    try {
+      await api.patch('/stratalyst/' + kb.supplier_id + '/verify-field', { block, field, value })
+      setKb((prev: any) => {
+        const iseed = { ...(prev.intelligence_seed || {}) }
+        if (!iseed[block]) iseed[block] = {}
+        iseed[block][field] = { value, source: 'jason_verified', confidence: 'high', jason_verified: true }
+        return { ...prev, intelligence_seed: iseed }
+      })
+      setVerifyingField(null)
+      setVerifyValue('')
+    } catch (e: any) { alert(e.response?.data?.detail || 'Verify failed') }
+  }
+
   // LIST
   if (step === 'list') {
     return (
@@ -799,61 +832,257 @@ export default function KnowledgeBase({ session }: { session: Session }) {
         </div>
       )}
 
-      {/* ── MANUAL SEED PANEL ── */}
-      {!editingSeed ? (
-        <div className="mb-4 p-4 rounded-xl"
-             style={{ background: 'var(--stratagent-panel)', border: kb?.manual_seed?.product_plain ? '1px solid var(--stratagent-border)' : '1px solid #92400e' }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-widest font-semibold"
-                   style={{ color: kb?.manual_seed?.product_plain ? 'var(--stratagent-gold)' : '#f59e0b' }}>
-                {kb?.manual_seed?.product_plain ? 'Agent Definition' : '⚠ Agent Definition — Not set'}
-              </div>
-              {kb?.manual_seed?.product_plain ? (
-                <div className="mt-1 space-y-0.5">
-                  <p className="text-xs" style={{ color: 'var(--stratagent-text)' }}>
-                    <span style={{ color: 'var(--stratagent-muted)' }}>Sells: </span>{kb.manual_seed.product_plain}
-                  </p>
-                  {kb.manual_seed.buyer_type && (
-                    <p className="text-xs" style={{ color: 'var(--stratagent-text)' }}>
-                      <span style={{ color: 'var(--stratagent-muted)' }}>Buyer: </span>{kb.manual_seed.buyer_type}
-                    </p>
-                  )}
-                  {kb.manual_seed.not_this && (
-                    <p className="text-xs" style={{ color: '#ef444488' }}>
-                      <span style={{ color: '#ef444488' }}>Not: </span>{kb.manual_seed.not_this}
-                    </p>
+      {/* ── INTELLIGENCE SEED PANEL ── */}
+      {(() => {
+        const iseed = kb?.intelligence_seed || {}
+        const hasSeed = !!(iseed?.identity?.product_plain?.value || kb?.manual_seed?.product_plain)
+        const completeness = iseed?._meta?.completeness_pct ?? null
+        const lastBuilt = iseed?._meta?.last_built ?? null
+        const recFields: any[] = iseed?.recommended_fields ?? []
+
+        const confBadge = (c: string, verified: boolean) => {
+          if (verified) return <span title="Jason verified" style={{ color: 'var(--stratagent-gold)', fontSize: '10px', marginLeft: '4px' }}>✓</span>
+          if (c === 'high') return <span title="High confidence" style={{ color: '#22c55e', fontSize: '10px', marginLeft: '4px' }}>●</span>
+          if (c === 'medium') return <span title="Medium confidence" style={{ color: '#f59e0b', fontSize: '10px', marginLeft: '4px' }}>●</span>
+          return <span title="Low confidence" style={{ color: '#ef4444', fontSize: '10px', marginLeft: '4px' }}>●</span>
+        }
+
+        const SeedField = ({ block, fieldKey, label }: { block: string, fieldKey: string, label: string }) => {
+          const f = iseed?.[block]?.[fieldKey]
+          const val = f?.value || ''
+          const conf = f?.confidence || 'low'
+          const verified = f?.jason_verified || false
+          const isEditing = verifyingField?.block === block && verifyingField?.field === fieldKey
+          if (!val && !isEditing) return null
+          return (
+            <div className="py-1.5" style={{ borderBottom: '1px solid var(--stratagent-border)' }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-semibold" style={{ color: 'var(--stratagent-muted)' }}>{label}</span>
+                  {confBadge(conf, verified)}
+                  {isEditing ? (
+                    <div className="mt-1.5 flex gap-2 items-start">
+                      <textarea
+                        value={verifyValue}
+                        onChange={e => setVerifyValue(e.target.value)}
+                        rows={2}
+                        className="flex-1 px-2 py-1 rounded text-xs outline-none resize-none"
+                        style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-gold)', color: 'var(--stratagent-text)' }}
+                      />
+                      <div className="flex flex-col gap-1">
+                        <button onClick={() => verifySeedField(block, fieldKey, verifyValue)}
+                                className="text-xs px-2 py-1 rounded font-semibold"
+                                style={{ background: 'var(--stratagent-gold)', color: '#000' }}>✓</button>
+                        <button onClick={() => { setVerifyingField(null); setVerifyValue('') }}
+                                className="text-xs px-2 py-1 rounded"
+                                style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>✕</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--stratagent-text)', wordBreak: 'break-word' }}>{val}</p>
                   )}
                 </div>
-              ) : (
-                <p className="text-xs mt-1" style={{ color: 'var(--stratagent-muted)' }}>
-                  Agents are guessing what this supplier sells. Define it so they search for the right buyers.
-                </p>
-              )}
+                {!isEditing && val && (
+                  <button
+                    onClick={() => { setVerifyingField({ block, field: fieldKey }); setVerifyValue(val) }}
+                    title="Verify / Override"
+                    className="text-xs opacity-30 hover:opacity-100 px-1 py-0.5 rounded flex-shrink-0 mt-3"
+                    style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>✎</button>
+                )}
+              </div>
             </div>
-            <button onClick={openSeedEditor}
-                    className="text-xs px-3 py-1.5 rounded-lg flex-shrink-0 ml-4"
-                    style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
-              {kb?.manual_seed?.product_plain ? '✎ Edit' : '+ Define'}
-            </button>
+          )
+        }
+
+        const BLOCKS = [
+          { key: 'identity', label: 'Identity', fields: [
+            { key: 'product_plain', label: 'What they sell' },
+            { key: 'not_this', label: 'NOT this (disambiguation)' },
+            { key: 'problem_solved', label: 'Problem solved' },
+            { key: 'key_specs', label: 'Key specifications' },
+            { key: 'certifications', label: 'Certifications' },
+          ]},
+          { key: 'buyer_intelligence', label: 'Buyer Intelligence', fields: [
+            { key: 'buyer_type', label: 'Buyer type' },
+            { key: 'use_case', label: 'Use case' },
+            { key: 'decision_maker', label: 'Decision maker role' },
+            { key: 'influencer', label: 'Influencer / specifier' },
+            { key: 'procurement_path', label: 'Procurement path' },
+          ]},
+          { key: 'commercial_reality', label: 'Commercial Reality', fields: [
+            { key: 'deal_size', label: 'Typical deal size' },
+            { key: 'geography', label: 'Geography (hard constraint)' },
+            { key: 'relationship_model', label: 'Relationship model' },
+            { key: 'minimum_threshold', label: 'Minimum threshold' },
+          ]},
+          { key: 'winning_conditions', label: 'Winning Conditions', fields: [
+            { key: 'we_win_when', label: 'We win when' },
+            { key: 'differentiator', label: 'Key differentiator' },
+            { key: 'proof_points', label: 'Proof points' },
+          ]},
+          { key: 'signal_recognition', label: 'Signal Recognition', fields: [
+            { key: 'trigger_events', label: 'Buying trigger events' },
+            { key: 'tender_keywords', label: 'Tender / procurement keywords' },
+            { key: 'capex_indicators', label: 'CAPEX indicators' },
+            { key: 'regulatory_drivers', label: 'Regulatory drivers' },
+          ]},
+          { key: 'ssi_context', label: 'SSI Context (Jason only)', fields: [
+            { key: 'why_ssi_represents', label: 'Why SSI represents this supplier' },
+            { key: 'strategic_priority', label: 'Strategic priority' },
+            { key: 'known_contacts', label: 'Known contacts' },
+            { key: 'internal_notes', label: 'Internal notes' },
+          ]},
+        ]
+
+        return (
+          <div className="mb-4 rounded-xl overflow-hidden"
+               style={{ border: hasSeed ? '1px solid var(--stratagent-border)' : '1px solid #92400e' }}>
+
+            {/* Header row */}
+            <div className="px-4 py-3 flex items-center justify-between"
+                 style={{ background: 'var(--stratagent-panel)' }}>
+              <div>
+                <div className="text-xs uppercase tracking-widest font-semibold"
+                     style={{ color: hasSeed ? 'var(--stratagent-gold)' : '#f59e0b' }}>
+                  {hasSeed ? 'Intelligence Seed' : '⚠ Intelligence Seed — Not built'}
+                </div>
+                <div className="flex items-center gap-3 mt-0.5">
+                  {completeness !== null && (
+                    <span className="text-xs" style={{ color: completeness >= 70 ? '#22c55e' : completeness >= 40 ? '#f59e0b' : '#ef4444' }}>
+                      {completeness}% complete
+                    </span>
+                  )}
+                  {lastBuilt && (
+                    <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                      Built {new Date(lastBuilt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
+                  {!hasSeed && (
+                    <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                      Agents need this to hunt intelligently
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                <button
+                  onClick={buildSeed}
+                  disabled={buildingSeed || !kb?.company_name}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40"
+                  style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                  {buildingSeed ? '⟳ Building...' : hasSeed ? '↻ Rebuild' : '⚡ Build Seed'}
+                </button>
+                <button onClick={openSeedEditor}
+                        className="text-xs px-3 py-1.5 rounded-lg"
+                        style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                  ✎ Manual
+                </button>
+              </div>
+            </div>
+
+            {/* Build result flash */}
+            {seedBuildResult && (
+              <div className="px-4 py-2 text-xs font-semibold"
+                   style={{ background: '#064e3b', color: 'var(--stratagent-green)' }}>
+                ✓ Seed built — {seedBuildResult.intelligence_seed?._meta?.completeness_pct ?? '?'}% complete
+                {' · '}{Object.keys(seedBuildResult.intelligence_seed || {}).filter(k => k !== '_meta').length} blocks populated
+              </div>
+            )}
+
+            {/* 6-block accordion — only shown when seed has data */}
+            {hasSeed && (
+              <div style={{ background: 'var(--stratagent-dark)' }}>
+                {BLOCKS.map(({ key: bk, label: bLabel, fields }) => {
+                  const blockData = iseed?.[bk] || {}
+                  const filledCount = fields.filter(f => blockData[f.key]?.value).length
+                  const isOpen = expandedSeedBlock === bk
+                  const isJasonOnly = bk === 'ssi_context'
+                  return (
+                    <div key={bk} style={{ borderTop: '1px solid var(--stratagent-border)' }}>
+                      <button
+                        className="w-full px-4 py-2.5 flex items-center justify-between text-left"
+                        style={{ background: 'transparent' }}
+                        onClick={() => setExpandedSeedBlock(isOpen ? null : bk)}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold" style={{ color: isJasonOnly ? 'var(--stratagent-gold)' : 'var(--stratagent-text)' }}>
+                            {bLabel}
+                          </span>
+                          {isJasonOnly && <span className="text-xs" style={{ color: 'var(--stratagent-gold)', opacity: 0.7 }}>🔒</span>}
+                          <span className="text-xs" style={{ color: filledCount > 0 ? '#22c55e' : 'var(--stratagent-muted)' }}>
+                            {filledCount}/{fields.length}
+                          </span>
+                        </div>
+                        <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>{isOpen ? '▲' : '▼'}</span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-4 pb-3">
+                          {fields.map(f => (
+                            <SeedField key={f.key} block={bk} fieldKey={f.key} label={f.label} />
+                          ))}
+                          {fields.every(f => !blockData[f.key]?.value) && (
+                            <p className="text-xs py-2" style={{ color: 'var(--stratagent-muted)' }}>
+                              No data yet — click ⚡ Build Seed to populate this block
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Recommended Fields queue */}
+                {recFields.length > 0 && (
+                  <div style={{ borderTop: '1px solid var(--stratagent-border)' }}>
+                    <div className="px-4 py-2.5">
+                      <span className="text-xs font-semibold uppercase tracking-widest"
+                            style={{ color: '#f59e0b' }}>
+                        Agent Recommendations ({recFields.length})
+                      </span>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>
+                        Agents flagged these knowledge gaps during research
+                      </p>
+                    </div>
+                    {recFields.map((rf: any, i: number) => (
+                      <div key={i} className="px-4 pb-2">
+                        <div className="px-3 py-2 rounded-lg" style={{ background: 'var(--stratagent-panel)', border: '1px solid #92400e' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-xs font-semibold" style={{ color: '#f59e0b' }}>{rf.field_name}</span>
+                              <span className="text-xs ml-2" style={{ color: 'var(--stratagent-muted)' }}>— {rf.suggested_by}</span>
+                              <p className="text-xs mt-0.5" style={{ color: 'var(--stratagent-text)' }}>{rf.rationale}</p>
+                              {rf.draft_value && (
+                                <p className="text-xs mt-0.5 italic" style={{ color: 'var(--stratagent-muted)' }}>Draft: {rf.draft_value}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      ) : (
+        )
+      })()}
+
+      {/* ── MANUAL SEED EDIT FORM (slide-down) ── */}
+      {editingSeed && (
         <div className="mb-4 p-5 rounded-xl space-y-4"
              style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-gold)' }}>
           <div className="text-xs uppercase tracking-widest font-semibold mb-1"
                style={{ color: 'var(--stratagent-gold)' }}>
-            Agent Definition — Your words, not AI guesses
+            Manual Override — Your words take priority
           </div>
           <p className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
-            These four fields are fed to every agent before anything else. Plain language only — no marketing speak. The clearer this is, the better every hunt and research run will be.
+            These four fields anchor every agent. Edit only what you know is wrong or missing. Agent-built fields above stay intact.
           </p>
 
           {[
-            { label: 'What does this supplier sell?', hint: 'Literal, plain English. e.g. "Biodegradable paper tea and coffee filter bags sold in 100-packs for single-cup brewing."', val: seedProductPlain, set: setSeedProductPlain },
-            { label: 'Who buys this?', hint: 'The actual buyer type. e.g. "Hotel procurement managers, Airbnb Superhost operators, cafe owners, office managers."', val: seedBuyerType, set: setSeedBuyerType },
-            { label: 'What do buyers use it for?', hint: 'The use case. e.g. "Placing a filter in a cup or teapot, adding loose tea or coffee, pouring hot water through it."', val: seedUseCase, set: setSeedUseCase },
-            { label: 'What is this NOT? (disambiguation)', hint: 'Stops AI from confusing this with similar-sounding products. e.g. "NOT a water filter. NOT an RO system. NOT industrial filtration. NOT a water treatment product."', val: seedNotThis, set: setSeedNotThis },
+            { label: 'What does this supplier sell?', hint: 'Literal, plain English. e.g. "Industrial pipe insulation materials for high-temperature applications."', val: seedProductPlain, set: setSeedProductPlain },
+            { label: 'Who buys this?', hint: 'The actual buyer type. e.g. "Industrial insulation contractors, EPCs, plant maintenance engineers."', val: seedBuyerType, set: setSeedBuyerType },
+            { label: 'What do buyers use it for?', hint: 'The use case. e.g. "Insulating steam pipes and process vessels to reduce heat loss and meet fire regulations."', val: seedUseCase, set: setSeedUseCase },
+            { label: 'What is this NOT? (disambiguation)', hint: 'Stops agents from confusing this with similar products. e.g. "NOT building insulation. NOT residential loft insulation. NOT acoustic panels."', val: seedNotThis, set: setSeedNotThis },
           ].map(({ label, hint, val, set }) => (
             <div key={label}>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--stratagent-text)' }}>
@@ -874,7 +1103,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
             <button onClick={saveSeed} disabled={seedSaving || !seedProductPlain.trim()}
                     className="px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
                     style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
-              {seedSaving ? 'Saving...' : 'Save Definition'}
+              {seedSaving ? 'Saving...' : 'Save'}
             </button>
             <button onClick={() => setEditingSeed(false)}
                     className="px-4 py-2 rounded-lg text-sm"

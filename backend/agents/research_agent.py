@@ -24,51 +24,151 @@ def _cutoff_year_month() -> tuple[int, int]:
     return year, month
 
 
+def _seed_val(seed: dict, block: str, field: str) -> str:
+    """Safely extract a value from intelligence_seed block.field."""
+    return (seed.get(block, {}).get(field, {}) or {}).get("value", "") or ""
+
+
 def _summarise_kb(kb: dict) -> str:
-    """Build a compact supplier-capability summary for the research prompt.
-    Manual Seed (owner-defined) takes precedence over AI-researched profile detail."""
+    """
+    Build a rich supplier-capability summary for the research prompt.
+
+    Priority order:
+    1. intelligence_seed (6-block agentic seed) -- fullest context
+    2. manual_seed (4-field owner definition) -- identity anchor
+    3. KB profile (AI-researched content) -- supporting detail
+
+    The intelligence_seed gives the research agent Signal Recognition,
+    Buyer Intelligence, Winning Conditions, and Commercial Reality context
+    that was previously unavailable -- dramatically improving research quality.
+    """
     profile = kb.get("profile", {})
+    iseed = kb.get("intelligence_seed") or {}
     seed = kb.get("manual_seed", {})
     company = kb.get("company_name", "Unknown")
     website = kb.get("website_url", "")
 
-    parts = ["SUPPLIER DEFINITION:"]
+    has_iseed = bool(iseed.get("identity", {}).get("product_plain", {}).get("value"))
 
-    if seed.get("product_plain"):
-        parts.append(f"What they sell (owner-defined): {seed['product_plain']}")
-    if seed.get("buyer_type"):
-        parts.append(f"Who buys this (owner-defined): {seed['buyer_type']}")
-    if seed.get("use_case"):
-        parts.append(f"How buyers use it (owner-defined): {seed['use_case']}")
-    if seed.get("not_this"):
-        parts.append(f"THIS IS NOT (owner-defined -- do not confuse): {seed['not_this']}")
-
-    if any(seed.values()):
-        parts.append("")
-        parts.append("AI-RESEARCHED DETAIL (supports the above -- does not override it):")
-
-    catalogue = profile.get("product_catalogue", "")
-    overview = profile.get("company_overview", "")
-    if not any(seed.values()):
-        if overview:
-            parts.append(f"Company overview: {str(overview)[:300]}")
-        parts.append(f"Products/services: {str(catalogue)[:500]}" if catalogue else f"Company: {company}")
-    else:
-        if catalogue:
-            parts.append(f"Product catalogue detail: {str(catalogue)[:400]}")
-
+    parts = ["== SUPPLIER INTELLIGENCE BRIEF =="]
+    parts.append(f"Company: {company}")
     if website:
         parts.append(f"Website: {website}")
-    if profile.get("technical_differentiators"):
-        parts.append(f"Differentiators: {str(profile['technical_differentiators'])[:200]}")
-    if profile.get("certifications"):
-        parts.append(f"Certifications: {str(profile['certifications'])[:150]}")
-    if profile.get("buyer_profiles"):
-        parts.append(f"Buyer profiles: {str(profile['buyer_profiles'])[:200]}")
-    if profile.get("distribution_channels"):
-        parts.append(f"Distribution: {str(profile['distribution_channels'])[:150]}")
 
-    return "\n".join(p for p in parts if p)
+    # -- IDENTITY BLOCK --
+    parts.append("")
+    parts.append("-- WHAT THEY SELL (authoritative -- do not contradict) --")
+    if has_iseed:
+        product = _seed_val(iseed, "identity", "product_plain") or seed.get("product_plain", "")
+        not_this = _seed_val(iseed, "identity", "not_this") or seed.get("not_this", "")
+        problem = _seed_val(iseed, "identity", "problem_solved")
+        specs = _seed_val(iseed, "identity", "key_specs")
+        certs = _seed_val(iseed, "identity", "certifications")
+    else:
+        product = seed.get("product_plain", "")
+        not_this = seed.get("not_this", "")
+        problem = specs = certs = ""
+
+    if product:
+        parts.append(f"Product: {product}")
+    if not_this:
+        parts.append(f"NOT THIS (critical disambiguation): {not_this}")
+    if problem:
+        parts.append(f"Problem it solves: {problem}")
+    if specs:
+        parts.append(f"Key specifications: {specs}")
+    if certs:
+        parts.append(f"Certifications: {certs}")
+
+    # -- BUYER INTELLIGENCE BLOCK --
+    parts.append("")
+    parts.append("-- WHO BUYS THIS AND HOW --")
+    if has_iseed:
+        buyer = _seed_val(iseed, "buyer_intelligence", "buyer_type") or seed.get("buyer_type", "")
+        use_case = _seed_val(iseed, "buyer_intelligence", "use_case") or seed.get("use_case", "")
+        decision_maker = _seed_val(iseed, "buyer_intelligence", "decision_maker")
+        influencer = _seed_val(iseed, "buyer_intelligence", "influencer")
+        proc_path = _seed_val(iseed, "buyer_intelligence", "procurement_path")
+    else:
+        buyer = seed.get("buyer_type", "")
+        use_case = seed.get("use_case", "")
+        decision_maker = influencer = proc_path = ""
+
+    if buyer:
+        parts.append(f"Buyer type: {buyer}")
+    if use_case:
+        parts.append(f"Use case: {use_case}")
+    if decision_maker:
+        parts.append(f"Decision maker role: {decision_maker}")
+    if influencer:
+        parts.append(f"Influencer/specifier role: {influencer}")
+    if proc_path:
+        parts.append(f"Procurement path: {proc_path}")
+
+    # -- COMMERCIAL REALITY BLOCK --
+    if has_iseed:
+        deal_size = _seed_val(iseed, "commercial_reality", "deal_size")
+        geography = _seed_val(iseed, "commercial_reality", "geography")
+        rel_model = _seed_val(iseed, "commercial_reality", "relationship_model")
+        min_thresh = _seed_val(iseed, "commercial_reality", "minimum_threshold")
+        if any([deal_size, geography, rel_model, min_thresh]):
+            parts.append("")
+            parts.append("-- COMMERCIAL CONTEXT --")
+            if deal_size:
+                parts.append(f"Typical deal size: {deal_size}")
+            if geography:
+                parts.append(f"Geography (hard constraint): {geography}")
+            if rel_model:
+                parts.append(f"Relationship model: {rel_model}")
+            if min_thresh:
+                parts.append(f"Minimum threshold: {min_thresh}")
+
+    # -- WINNING CONDITIONS BLOCK (feeds SD scoring guidance) --
+    if has_iseed:
+        win_when = _seed_val(iseed, "winning_conditions", "we_win_when")
+        diff = _seed_val(iseed, "winning_conditions", "differentiator")
+        proofs = _seed_val(iseed, "winning_conditions", "proof_points")
+        if any([win_when, diff, proofs]):
+            parts.append("")
+            parts.append("-- WINNING CONDITIONS (use these to calibrate SD scoring) --")
+            if win_when:
+                parts.append(f"We win when: {win_when}")
+            if diff:
+                parts.append(f"Key differentiator: {diff}")
+            if proofs:
+                parts.append(f"Proof points: {proofs}")
+
+    # -- SIGNAL RECOGNITION BLOCK (tells the agent what to hunt for) --
+    if has_iseed:
+        triggers = _seed_val(iseed, "signal_recognition", "trigger_events")
+        keywords = _seed_val(iseed, "signal_recognition", "tender_keywords")
+        capex = _seed_val(iseed, "signal_recognition", "capex_indicators")
+        regs = _seed_val(iseed, "signal_recognition", "regulatory_drivers")
+        if any([triggers, keywords, capex, regs]):
+            parts.append("")
+            parts.append("-- SIGNAL RECOGNITION (hunt for these specifically) --")
+            if triggers:
+                parts.append(f"Buying trigger events: {triggers}")
+            if keywords:
+                parts.append(f"Tender/procurement keywords to search: {keywords}")
+            if capex:
+                parts.append(f"CAPEX indicators: {capex}")
+            if regs:
+                parts.append(f"Regulatory drivers: {regs}")
+
+    # -- KB PROFILE DETAIL (supporting, does not override seed) --
+    catalogue = profile.get("product_catalogue", "")
+    if catalogue and not has_iseed:
+        parts.append("")
+        parts.append("-- PRODUCT CATALOGUE DETAIL --")
+        parts.append(str(catalogue)[:500])
+
+    if profile.get("competitive_positioning"):
+        cp = str(profile["competitive_positioning"])[:300]
+        if not has_iseed:
+            parts.append(f"Competitive positioning: {cp}")
+
+    return "\n".join(p for p in parts if p is not None)
 
 
 def _parse_json_response(response: str) -> dict:
@@ -123,16 +223,20 @@ WHAT TO RESEARCH (search all of these):
    Record the official URL exactly as found (e.g. https://www.example.com) -- this is
    REQUIRED, not optional. If you cannot find a verified official site, return null --
    never guess or fabricate a URL.
-2. Buying signals -- ONLY include signals from {cutoff_str} or later:
-   - Tender notices or awarded contracts in this product category
+2. Buying signals -- ONLY include signals from {cutoff_str} or later.
+   The SUPPLIER INTELLIGENCE BRIEF above includes specific trigger events, tender keywords,
+   and CAPEX indicators to search for -- use those as your primary signal targets.
+   General signal types to look for:
+   - Tender notices or awarded contracts using the supplier's tender keywords
    - Leadership changes: new CPO, Procurement head, Plant Manager, Sustainability Director
-   - Capital expenditure: new facilities, expansions, equipment investment
+   - Capital expenditure matching the supplier's CAPEX indicators
    - Budget announcements, fiscal year spending plans
    - Sustainability/decarbonisation commitments requiring product upgrades
    - Strategic shifts, M&A, new market entry
-   - News events, regulatory requirements
+   - Regulatory compliance requirements matching the supplier's regulatory drivers
 3. Specific facilities, plants, or projects where the supplier's products would apply
-4. Decision maker -- name, title, LinkedIn
+4. Decision maker -- search for the role titles listed in the Supplier Intelligence Brief
+   (Decision maker role and Influencer/specifier role) -- find the specific person
 5. Current supplier relationships in this product category
 6. Recent news and strategic developments
 
