@@ -811,3 +811,116 @@ async def suggest_nace(supplier_id: str):
         return {"supplier_id": supplier_id, "suggestions": clean}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"NACE suggestion failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Deal Triggers endpoints
+# ---------------------------------------------------------------------------
+
+from agents.stratalyst_agent import generate_deal_triggers as _gen_triggers
+
+
+class DealTriggerItem(BaseModel):
+    id: Optional[str] = None
+    trigger_type: str
+    title: str
+    description: str
+    scan_keywords: List[str] = []
+    lead_time_days: int = 90
+    rationale: Optional[str] = ""
+    confidence: Optional[str] = "high"
+    source: Optional[str] = "jason_verified"
+    jason_verified: Optional[bool] = True
+
+
+class SaveTriggersRequest(BaseModel):
+    triggers: List[DealTriggerItem]
+
+
+@router.post("/{supplier_id}/generate-deal-triggers")
+async def generate_deal_triggers_endpoint(
+    supplier_id: str,
+    x_session_id: str = Header(...),
+):
+    """
+    STRATALYST: Synthesise structured deal triggers from the intelligence seed.
+    Returns typed trigger objects ready for STRATAGORA signal scoring.
+    Saves results to deal_triggers field on the KB document.
+    """
+    await check_and_increment(x_session_id)
+
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+
+    seed = kb.get("intelligence_seed") or {}
+    if not seed:
+        raise HTTPException(
+            status_code=422,
+            detail="Build the Intelligence Seed first -- deal triggers need the seed signal data."
+        )
+
+    triggers = await _gen_triggers(
+        company_name=kb["company_name"],
+        intelligence_seed=seed,
+        profile=kb.get("profile", {}),
+    )
+
+    if not triggers:
+        raise HTTPException(status_code=500, detail="Trigger generation returned no results. Try again.")
+
+    db.save_knowledge_base(supplier_id, {"deal_triggers": triggers})
+
+    return {
+        "status": "generated",
+        "supplier_id": supplier_id,
+        "company_name": kb["company_name"],
+        "trigger_count": len(triggers),
+        "deal_triggers": triggers,
+    }
+
+
+@router.get("/{supplier_id}/deal-triggers")
+async def get_deal_triggers(supplier_id: str):
+    """Return saved deal triggers for a supplier."""
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+    triggers = kb.get("deal_triggers") or []
+    return {
+        "supplier_id": supplier_id,
+        "company_name": kb["company_name"],
+        "deal_triggers": triggers,
+        "trigger_count": len(triggers),
+    }
+
+
+@router.patch("/{supplier_id}/deal-triggers")
+async def save_deal_triggers(
+    supplier_id: str,
+    payload: SaveTriggersRequest,
+):
+    """
+    Save the full deal trigger list (after Jason edits/verifies in the UI).
+    Overwrites the existing list -- send the complete current state.
+    """
+    import uuid as _uuid
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+
+    triggers = []
+    for t in payload.triggers:
+        d = t.dict()
+        if not d.get("id"):
+            d["id"] = str(_uuid.uuid4())
+        d["jason_verified"] = True
+        d["source"] = "jason_verified"
+        triggers.append(d)
+
+    db.save_knowledge_base(supplier_id, {"deal_triggers": triggers})
+
+    return {
+        "status": "saved",
+        "trigger_count": len(triggers),
+    }

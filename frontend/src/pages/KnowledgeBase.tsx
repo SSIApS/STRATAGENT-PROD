@@ -109,6 +109,22 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   const [naceSuggestions, setNaceSuggestions] = useState<{code:string;label:string;rationale:string}[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
 
+  // Deal Triggers
+  const [dealTriggers, setDealTriggers] = useState<any[]>([])
+  const [triggersLoading, setTriggersLoading] = useState(false)
+  const [triggersGenerated, setTriggersGenerated] = useState(false)
+  const [editingTrigger, setEditingTrigger] = useState<string | null>(null)
+
+  // Supplier Reports
+  const [reportTab, setReportTab] = useState<'audit' | 'synthesis' | 'qa'>('audit')
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditResult, setAuditResult] = useState<any>(null)
+  const [synthesisLoading, setSynthesisLoading] = useState(false)
+  const [synthesisResult, setSynthesisResult] = useState<any>(null)
+  const [qaQuestion, setQaQuestion] = useState('')
+  const [qaLoading, setQaLoading] = useState(false)
+  const [qaResult, setQaResult] = useState<any>(null)
+
   const [supplierOrder, setSupplierOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('stratagent_kb_order') || '[]') } catch { return [] }
   })
@@ -948,6 +964,320 @@ export default function KnowledgeBase({ session }: { session: Session }) {
         </div>
       </div>
     )
+  }
+
+
+
+  // Print / export helpers
+  function printReport(mode: 'audit' | 'synthesis' | 'discovery') {
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+    const company = kb?.company_name || 'Supplier'
+    const orange = '#E87A00'
+    const base = `
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11pt; color: #111; background: #fff; padding: 28px 36px; }
+        .header { border-bottom: 2.5px solid ${orange}; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .header-left h1 { font-size: 17pt; font-weight: 800; color: ${orange}; letter-spacing: -0.5px; }
+        .header-left h2 { font-size: 12pt; font-weight: 600; color: #111; margin-top: 2px; }
+        .header-right { font-size: 8.5pt; color: #666; text-align: right; line-height: 1.6; }
+        .section-title { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: ${orange}; margin: 18px 0 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        .card { border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; page-break-inside: avoid; }
+        .card-title { font-size: 10pt; font-weight: 700; color: #111; margin-bottom: 3px; }
+        .card-sub { font-size: 9pt; color: #555; margin-bottom: 3px; }
+        .card-action { font-size: 9pt; color: #1a7a3a; font-weight: 500; }
+        .badge { display: inline-block; font-size: 8pt; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+        .badge-strong { background: #e6f4ed; color: #166534; }
+        .badge-adequate { background: #fff7e0; color: #92400e; }
+        .badge-weak { background: #fff2e0; color: #9a3a00; }
+        .badge-missing { background: #fde8e8; color: #991b1b; }
+        .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .note-block { border: 1px solid #ccc; border-radius: 4px; min-height: 44px; margin-top: 6px; padding: 4px 6px; }
+        .note-label { font-size: 7.5pt; color: #aaa; font-style: italic; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        th { font-size: 8pt; text-transform: uppercase; letter-spacing: 1px; color: #666; border-bottom: 2px solid #e0e0e0; padding: 5px 8px; text-align: left; }
+        td { font-size: 9pt; border-bottom: 1px solid #f0f0f0; padding: 7px 8px; vertical-align: top; }
+        .question-block { margin-bottom: 14px; page-break-inside: avoid; }
+        .question { font-size: 10pt; font-weight: 600; color: #111; margin-bottom: 2px; }
+        .question-context { font-size: 8.5pt; color: #666; margin-bottom: 5px; }
+        .lines { margin-top: 4px; }
+        .line { border-bottom: 1px solid #ccc; height: 20px; margin-bottom: 4px; }
+        .footer { margin-top: 28px; border-top: 1px solid #e0e0e0; padding-top: 8px; font-size: 8pt; color: #999; display: flex; justify-content: space-between; }
+        @media print { body { padding: 18px 24px; } .no-print { display: none; } }
+      </style>
+      <div class="footer">
+        <span>STRATAGENT Intelligence -- Strategic Sales International ApS -- jls@strategic.dk</span>
+        <span>Confidential</span>
+      </div>
+    `
+
+    let html = ''
+
+    if (mode === 'audit' && auditResult && !auditResult.error) {
+      const gradeClass = (g: string) => g === 'STRONG' ? 'badge-strong' : g === 'ADEQUATE' ? 'badge-adequate' : g === 'WEAK' ? 'badge-weak' : 'badge-missing'
+      html = `<!DOCTYPE html><html><head><title>Intelligence Audit -- ${company}</title>${base}</head><body>
+        <div class="header">
+          <div class="header-left">
+            <h1>STRATAGENT</h1>
+            <h2>Intelligence Audit Report -- ${company}</h2>
+          </div>
+          <div class="header-right">
+            Prepared by Jason L. Smith<br>Strategic Sales International ApS<br>${today}
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:14px;align-items:center;">
+          <div>
+            <div style="font-size:13pt;font-weight:700;color:#111;">Overall Intelligence Depth: ${auditResult.overall_depth}/100</div>
+            <div style="font-size:9pt;color:#666;margin-top:2px;">${auditResult.overall_grade}</div>
+          </div>
+          <div style="font-size:9pt;color:#555;max-width:55%;text-align:right;">Ready for: ${auditResult.ready_for || '—'}</div>
+        </div>
+
+        <div class="section-title">Top Priorities</div>
+        ${(auditResult.top_3_priorities || []).map((p: any) => `
+          <div class="card">
+            <div class="row">
+              <div style="flex:1">
+                <div class="card-title">#${p.rank} &nbsp; ${p.field}</div>
+                <div class="card-sub">${p.why_it_matters}</div>
+                <div class="card-action">Action: ${p.action}</div>
+              </div>
+            </div>
+            <div class="note-block"><span class="note-label">Notes from client meeting:</span></div>
+          </div>
+        `).join('')}
+
+        <div class="section-title">All Intelligence Elements</div>
+        <table>
+          <thead><tr><th>Field</th><th>Grade</th><th>Score</th><th>Gap / Missing</th><th>Recommended Source</th></tr></thead>
+          <tbody>
+            ${(auditResult.elements || []).map((el: any) => `
+              <tr>
+                <td><strong>${el.field}</strong></td>
+                <td><span class="badge ${gradeClass(el.grade)}">${el.grade}</span></td>
+                <td>${el.score}/100</td>
+                <td style="color:#555;">${el.what_is_missing || '—'}</td>
+                <td style="color:#2563eb;">${el.recommended_source || '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${auditResult.strengths?.length ? `
+          <div class="section-title">Strengths</div>
+          ${auditResult.strengths.map((s: string) => `<div class="card-sub" style="margin-bottom:4px;">+ ${s}</div>`).join('')}
+        ` : ''}
+        <div class="footer"><span>STRATAGENT Intelligence -- Strategic Sales International ApS -- jls@strategic.dk</span><span>Confidential</span></div>
+      </body></html>`
+    }
+
+    else if (mode === 'synthesis' && synthesisResult && !synthesisResult.error) {
+      html = `<!DOCTYPE html><html><head><title>Capability Report -- ${company}</title>${base}</head><body>
+        <div class="header">
+          <div class="header-left">
+            <h1>STRATAGENT</h1>
+            <h2>${synthesisResult.report_title || 'Capability Intelligence Report'} -- ${company}</h2>
+          </div>
+          <div class="header-right">
+            Prepared by ${synthesisResult.prepared_by}<br>${synthesisResult.prepared_for_org}<br>${today}
+          </div>
+        </div>
+        ${synthesisResult.executive_summary ? `
+          <div class="section-title">Executive Summary</div>
+          <div class="card"><p>${synthesisResult.executive_summary}</p></div>
+        ` : ''}
+        ${synthesisResult.product_range?.products?.length ? `
+          <div class="section-title">Product Range -- ${synthesisResult.product_range.headline || ''}</div>
+          ${synthesisResult.product_range.products.map((p: any) => `
+            <div class="card">
+              <div class="card-title">${p.name}</div>
+              <div class="card-sub">${p.description}</div>
+              ${p.operating_envelope ? `<div class="card-sub" style="color:#2563eb;">Specs: ${p.operating_envelope}</div>` : ''}
+              ${p.applications ? `<div class="card-sub">Applications: ${p.applications}</div>` : ''}
+            </div>
+          `).join('')}
+        ` : ''}
+        ${synthesisResult.technical_differentiators?.length ? `
+          <div class="section-title">Technical Differentiators</div>
+          ${synthesisResult.technical_differentiators.map((d: string) => `<div class="card-sub" style="padding:3px 0 3px 12px;border-left:3px solid ${orange};margin-bottom:4px;">${d}</div>`).join('')}
+        ` : ''}
+        ${synthesisResult.target_buyer_profiles?.length ? `
+          <div class="section-title">Target Buyer Profiles</div>
+          ${synthesisResult.target_buyer_profiles.map((b: any) => `
+            <div class="card">
+              <div class="card-title">${b.buyer_type}</div>
+              <div class="card-sub">${b.why_they_buy}</div>
+              ${b.typical_application ? `<div class="card-action">${b.typical_application}</div>` : ''}
+            </div>
+          `).join('')}
+        ` : ''}
+        ${synthesisResult.competitive_positioning ? `
+          <div class="section-title">Competitive Positioning</div>
+          <div class="card"><p>${synthesisResult.competitive_positioning}</p></div>
+        ` : ''}
+        ${synthesisResult.common_objections?.length ? `
+          <div class="section-title">Objection Handling</div>
+          ${synthesisResult.common_objections.map((o: any) => `
+            <div class="card">
+              <div class="card-sub" style="color:#c2410c;font-weight:600;">"${o.objection}"</div>
+              <div class="card-sub" style="margin-top:3px;">${o.response}</div>
+            </div>
+          `).join('')}
+        ` : ''}
+        <div class="footer"><span>STRATAGENT Intelligence -- Strategic Sales International ApS -- ${synthesisResult.contact_email}</span><span>Confidential</span></div>
+      </body></html>`
+    }
+
+    else if (mode === 'discovery' && auditResult && !auditResult.error) {
+      const gaps = (auditResult.elements || []).filter((el: any) => el.grade === 'WEAK' || el.grade === 'MISSING')
+      html = `<!DOCTYPE html><html><head><title>Client Discovery Sheet -- ${company}</title>${base}</head><body>
+        <div class="header">
+          <div class="header-left">
+            <h1>STRATAGENT</h1>
+            <h2>Client Discovery Sheet -- ${company}</h2>
+          </div>
+          <div class="header-right">
+            For SSI Consultant Use<br>Jason L. Smith -- jls@strategic.dk<br>${today}
+          </div>
+        </div>
+        <p style="font-size:9pt;color:#555;margin-bottom:16px;font-style:italic;">
+          Questions derived from intelligence gaps in the ${company} knowledge base.
+          Use during client meeting to capture missing information. Add answers to STRATAGENT after the session.
+        </p>
+
+        <div class="section-title">Priority Questions (address these first)</div>
+        ${(auditResult.top_3_priorities || []).map((p: any) => `
+          <div class="question-block">
+            <div class="question">${p.rank}. ${_gapToQuestion(p.field, p.why_it_matters)}</div>
+            <div class="question-context">Why it matters: ${p.why_it_matters}</div>
+            <div class="lines">${'<div class="line"></div>'.repeat(3)}</div>
+          </div>
+        `).join('')}
+
+        <div class="section-title">Additional Intelligence Gaps</div>
+        ${gaps.map((el: any) => `
+          <div class="question-block">
+            <div class="question">${_gapToQuestion(el.field, el.what_is_missing)}</div>
+            ${el.what_is_missing ? `<div class="question-context">Gap: ${el.what_is_missing}</div>` : ''}
+            <div class="lines">${'<div class="line"></div>'.repeat(2)}</div>
+          </div>
+        `).join('')}
+
+        <div class="section-title" style="margin-top:24px;">General Notes from Meeting</div>
+        <div class="note-block" style="min-height:120px;"><span class="note-label">Key takeaways, follow-up actions, next steps:</span></div>
+
+        <div class="footer">
+          <span>STRATAGENT Intelligence -- Strategic Sales International ApS -- jls@strategic.dk</span>
+          <span>Next step: update ${company} KB in STRATAGENT with captured intel</span>
+        </div>
+      </body></html>`
+    }
+
+    if (!html) return
+    const w = window.open('', '_blank')
+    if (w) {
+      w.document.write(html)
+      w.document.close()
+      setTimeout(() => w.print(), 400)
+    }
+  }
+
+  function _gapToQuestion(field: string, context: string): string {
+    const fieldMap: Record<string, string> = {
+      product_catalogue: 'Can you walk me through your full product range and key specifications?',
+      technical_differentiators: 'What makes your product technically different from alternatives in the market?',
+      certifications: 'What certifications, standards, or approvals does your product carry?',
+      case_studies: 'Can you share examples of where your product has been deployed and what results it delivered?',
+      buyer_profiles: 'Who are your typical customers -- what role, industry, and operational challenge do they have?',
+      competitive_positioning: 'How do you position against competitors -- where do you win, and where do you typically lose?',
+      operational_context: 'What operational environment or conditions does your product need to perform in?',
+      recent_news: 'What has changed in your business or product range in the last 12 months?',
+    }
+    return fieldMap[field] || `Can you tell me more about your ${field.replace(/_/g, ' ')}?`
+  }
+
+  // Deal Triggers handlers
+  async function loadDealTriggers() {
+    if (!kb?.supplier_id) return
+    try {
+      const res = await api.get(`/stratalyst/${kb.supplier_id}/deal-triggers`)
+      if (res.data.deal_triggers?.length) {
+        setDealTriggers(res.data.deal_triggers)
+        setTriggersGenerated(true)
+      }
+    } catch { /* silent */ }
+  }
+
+  async function generateDealTriggers() {
+    if (!kb?.supplier_id) return
+    setTriggersLoading(true)
+    try {
+      const res = await api.post(`/stratalyst/${kb.supplier_id}/generate-deal-triggers`)
+      setDealTriggers(res.data.deal_triggers || [])
+      setTriggersGenerated(true)
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Failed to generate triggers. Build the Intelligence Seed first.')
+    } finally { setTriggersLoading(false) }
+  }
+
+  async function saveDealTriggers(updated: any[]) {
+    if (!kb?.supplier_id) return
+    try {
+      await api.patch(`/stratalyst/${kb.supplier_id}/deal-triggers`, { triggers: updated })
+      setDealTriggers(updated)
+    } catch { alert('Save failed.') }
+  }
+
+  function deleteTrigger(id: string) {
+    const updated = dealTriggers.filter(t => t.id !== id)
+    saveDealTriggers(updated)
+  }
+
+  function verifyTrigger(id: string) {
+    const updated = dealTriggers.map(t => t.id === id ? { ...t, jason_verified: true, source: 'jason_verified' } : t)
+    saveDealTriggers(updated)
+  }
+
+  // Supplier Reports handlers
+  async function runAudit() {
+    if (!kb?.supplier_id) return
+    setAuditLoading(true)
+    setAuditResult(null)
+    try {
+      const res = await api.get(`/supplier-reports/${kb.supplier_id}/audit`)
+      setAuditResult(res.data)
+    } catch {
+      setAuditResult({ error: 'Audit failed. Please try again.' })
+    } finally {
+      setAuditLoading(false)
+    }
+  }
+
+  async function runSynthesis() {
+    if (!kb?.supplier_id) return
+    setSynthesisLoading(true)
+    setSynthesisResult(null)
+    try {
+      const res = await api.get(`/supplier-reports/${kb.supplier_id}/synthesis`)
+      setSynthesisResult(res.data)
+    } catch {
+      setSynthesisResult({ error: 'Synthesis failed. Please try again.' })
+    } finally {
+      setSynthesisLoading(false)
+    }
+  }
+
+  async function askQuestion() {
+    if (!kb?.supplier_id || !qaQuestion.trim()) return
+    setQaLoading(true)
+    setQaResult(null)
+    try {
+      const res = await api.post(`/supplier-reports/${kb.supplier_id}/qa`, { question: qaQuestion.trim() })
+      setQaResult(res.data)
+    } catch {
+      setQaResult({ error: 'Query failed. Please try again.' })
+    } finally {
+      setQaLoading(false)
+    }
   }
 
   // VIEW
@@ -2586,9 +2916,422 @@ export default function KnowledgeBase({ session }: { session: Session }) {
         {stratalystResult && !stratalystFindings && (
           <div className="p-3 rounded-lg text-xs"
                style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-green)', color: 'var(--stratagent-green)' }}>
-            Ingested {stratalystResult.ingested_count} sources · Depth now {Math.round(stratalystResult.intelligence_depth?.total || 0)}
+            Ingested {stratalystResult.ingested_count} sources - Depth now {Math.round(stratalystResult.intelligence_depth?.total || 0)}
           </div>
         )}
+      </div>
+
+
+      {/* DEAL TRIGGERS PANEL */}
+      <div className="mt-4 p-6 rounded-xl"
+           style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <div className="text-xs font-black uppercase tracking-widest mb-0.5" style={{ color: 'var(--stratagent-gold)' }}>
+              DEAL TRIGGERS
+            </div>
+            <p className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+              Real-world events that signal a prospect is entering a buying cycle. Used by STRATAGORA to score live signals.
+            </p>
+          </div>
+          <button
+            onClick={generateDealTriggers}
+            disabled={triggersLoading}
+            className="ml-4 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 flex items-center gap-1.5 whitespace-nowrap"
+            style={{ background: triggersLoading ? '#1e1e1e' : 'var(--stratagent-gold)', color: triggersLoading ? 'var(--stratagent-text)' : '#000' }}>
+            {triggersLoading
+              ? <><svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Generating...</>
+              : triggersGenerated ? 'Regenerate' : 'Generate Triggers'}
+          </button>
+        </div>
+
+        {!triggersGenerated && !triggersLoading && (
+          <div className="text-center py-8" style={{ color: 'var(--stratagent-muted)' }}>
+            <div className="text-2xl mb-2">&#9889;</div>
+            <p className="text-xs">Click Generate Triggers to synthesise deal signals from the Intelligence Seed.</p>
+            <p className="text-xs mt-1" style={{ color: '#555' }}>Requires a built Intelligence Seed.</p>
+          </div>
+        )}
+
+        {triggersGenerated && dealTriggers.length === 0 && (
+          <div className="text-xs text-center py-6" style={{ color: 'var(--stratagent-muted)' }}>
+            No triggers found. Try regenerating after building the Intelligence Seed.
+          </div>
+        )}
+
+        {dealTriggers.length > 0 && (
+          <div className="space-y-3">
+            {dealTriggers.map(trigger => {
+              const typeColors: Record<string, string> = {
+                CAPEX: '#3b82f6', REGULATORY: '#f97316', HIRING: '#10b981',
+                TECHNOLOGY: '#8b5cf6', 'M&A': '#ec4899', ESG: '#22d3ee',
+                SEASONAL: '#eab308', COMPETITIVE: '#ef4444',
+              }
+              const color = typeColors[trigger.trigger_type] || '#888'
+              const isEditing = editingTrigger === trigger.id
+
+              return (
+                <div key={trigger.id} className="rounded-lg p-4"
+                     style={{ background: 'var(--stratagent-dark)', border: `1px solid ${trigger.jason_verified ? color + '55' : 'var(--stratagent-border)'}` }}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: color + '22', color }}>
+                        {trigger.trigger_type}
+                      </span>
+                      {trigger.jason_verified && (
+                        <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#10b98122', color: '#10b981' }}>verified</span>
+                      )}
+                      <span className="text-xs font-semibold" style={{ color: 'var(--stratagent-text)' }}>{trigger.title}</span>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {!trigger.jason_verified && (
+                        <button onClick={() => verifyTrigger(trigger.id)}
+                          className="text-xs px-2 py-0.5 rounded"
+                          style={{ background: '#10b98122', color: '#10b981' }}>
+                          Verify
+                        </button>
+                      )}
+                      <button onClick={() => deleteTrigger(trigger.id)}
+                        className="text-xs px-2 py-0.5 rounded"
+                        style={{ background: '#ef444422', color: '#ef4444' }}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs mb-2" style={{ color: 'var(--stratagent-muted)' }}>{trigger.description}</p>
+
+                  {trigger.rationale && (
+                    <p className="text-xs mb-2 italic" style={{ color: '#666' }}>Why it works: {trigger.rationale}</p>
+                  )}
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex gap-1 flex-wrap">
+                      {(trigger.scan_keywords || []).map((kw: string, ki: number) => (
+                        <span key={ki} className="text-xs px-1.5 py-0.5 rounded font-mono"
+                              style={{ background: '#1a1a2e', color: '#7c8cf8', border: '1px solid #2d2d5e' }}>
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-xs ml-auto" style={{ color: '#555' }}>
+                      ~{trigger.lead_time_days}d lead time
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+
+            <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--stratagent-border)' }}>
+              <p className="text-xs" style={{ color: '#555' }}>
+                {dealTriggers.filter((t: any) => t.jason_verified).length} of {dealTriggers.length} triggers verified.
+                Verified triggers are used by STRATAGORA when scoring live signals.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* SUPPLIER REPORTS PANEL */}
+      <div className="mt-4 p-6 rounded-xl"
+           style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
+        <div className="mb-4">
+          <div className="text-xs font-black uppercase tracking-widest mb-0.5" style={{ color: 'var(--stratagent-gold)' }}>
+            SUPPLIER REPORTS
+          </div>
+          <p className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+            Intelligence Audit, Capability Synthesis, and KB Q&A -- all grounded in this supplier's knowledge base.
+          </p>
+        </div>
+
+        {/* Tab strip */}
+        <div className="flex gap-1 mb-5 p-1 rounded-lg" style={{ background: 'var(--stratagent-dark)' }}>
+          {(['audit', 'synthesis', 'qa'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setReportTab(tab)}
+              className="flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors"
+              style={{
+                background: reportTab === tab ? 'var(--stratagent-gold)' : 'transparent',
+                color: reportTab === tab ? '#000' : 'var(--stratagent-muted)',
+              }}>
+              {tab === 'audit' ? 'Intelligence Audit' : tab === 'synthesis' ? 'Capability Synthesis' : 'Q&A'}
+            </button>
+          ))}
+        </div>
+
+        {/* AUDIT TAB */}
+        {reportTab === 'audit' && (
+          <div>
+            <button
+              onClick={runAudit}
+              disabled={auditLoading}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 flex items-center justify-center gap-2 mb-4"
+              style={{ background: auditLoading ? '#1e1e1e' : 'var(--stratagent-gold)', color: auditLoading ? 'var(--stratagent-text)' : '#000' }}>
+              {auditLoading
+                ? <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Running Audit...</>
+                : 'Run Intelligence Audit'}
+            </button>
+
+            {auditResult && !auditResult.error && (
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => printReport('audit')}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold border"
+                  style={{ background: 'transparent', border: '1px solid var(--stratagent-gold)', color: 'var(--stratagent-gold)' }}>
+                  Print Gap Analysis
+                </button>
+                <button
+                  onClick={() => printReport('discovery')}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold border"
+                  style={{ background: 'transparent', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                  Print Discovery Sheet
+                </button>
+              </div>
+            )}
+
+            {auditResult?.error && (
+              <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--stratagent-dark)', border: '1px solid #ef4444', color: '#ef4444' }}>
+                {auditResult.error}
+              </div>
+            )}
+
+            {auditResult && !auditResult.error && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold" style={{ color: 'var(--stratagent-text)' }}>{auditResult.company_name}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>Intelligence Depth: {auditResult.overall_depth}/100</div>
+                  </div>
+                  <span className="text-xs font-bold px-2 py-1 rounded"
+                        style={{
+                          background: auditResult.overall_depth >= 80 ? '#052e16' : auditResult.overall_depth >= 50 ? '#1a1500' : '#1a0a0a',
+                          color: auditResult.overall_depth >= 80 ? '#10b981' : auditResult.overall_depth >= 50 ? 'var(--stratagent-gold)' : '#ef4444',
+                          border: `1px solid ${auditResult.overall_depth >= 80 ? '#10b981' : auditResult.overall_depth >= 50 ? 'var(--stratagent-gold)' : '#ef4444'}`
+                        }}>
+                    {auditResult.overall_grade}
+                  </span>
+                </div>
+
+                {auditResult.top_3_priorities?.length > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: 'var(--stratagent-gold)' }}>Top Priorities</div>
+                    <div className="space-y-2">
+                      {auditResult.top_3_priorities.map((p: any) => (
+                        <div key={p.rank} className="p-3 rounded-lg" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                          <div className="flex items-start gap-2">
+                            <span className="text-xs font-black shrink-0 mt-0.5" style={{ color: 'var(--stratagent-gold)' }}>#{p.rank}</span>
+                            <div>
+                              <div className="text-xs font-semibold mb-0.5" style={{ color: 'var(--stratagent-text)' }}>{p.field}</div>
+                              <div className="text-xs mb-1" style={{ color: 'var(--stratagent-muted)' }}>{p.why_it_matters}</div>
+                              <div className="text-xs" style={{ color: '#10b981' }}>{p.action}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {auditResult.elements?.length > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: 'var(--stratagent-muted)' }}>All Elements</div>
+                    <div className="space-y-2">
+                      {auditResult.elements.map((el: any, i: number) => {
+                        const gc = el.grade === 'STRONG' ? '#10b981' : el.grade === 'ADEQUATE' ? 'var(--stratagent-gold)' : el.grade === 'WEAK' ? '#f97316' : '#ef4444'
+                        return (
+                          <div key={i} className="p-3 rounded-lg" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-semibold" style={{ color: 'var(--stratagent-text)' }}>{el.field}</span>
+                              <span className="text-xs font-bold" style={{ color: gc }}>{el.grade} {el.score}/100</span>
+                            </div>
+                            {el.what_is_missing && <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>Gap: {el.what_is_missing}</div>}
+                            {el.recommended_source && <div className="text-xs mt-1" style={{ color: '#60a5fa' }}>Source: {el.recommended_source}</div>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {auditResult.strengths?.length > 0 && (
+                  <div className="p-3 rounded-lg" style={{ background: 'var(--stratagent-dark)', border: '1px solid #10b981' }}>
+                    <div className="text-xs font-semibold mb-1" style={{ color: '#10b981' }}>Strengths</div>
+                    {auditResult.strengths.map((s: string, i: number) => (
+                      <div key={i} className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>{s}</div>
+                    ))}
+                  </div>
+                )}
+
+                {auditResult.ready_for && (
+                  <div className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-muted)' }}>
+                    Ready for: <span style={{ color: 'var(--stratagent-text)' }}>{auditResult.ready_for}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SYNTHESIS TAB */}
+        {reportTab === 'synthesis' && (
+          <div>
+            <button
+              onClick={runSynthesis}
+              disabled={synthesisLoading}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 flex items-center justify-center gap-2 mb-4"
+              style={{ background: synthesisLoading ? '#1e1e1e' : 'var(--stratagent-gold)', color: synthesisLoading ? 'var(--stratagent-text)' : '#000' }}>
+              {synthesisLoading
+                ? <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Generating...</>
+                : 'Generate Capability Report'}
+            </button>
+
+            {synthesisResult && !synthesisResult.error && (
+              <div className="mb-4">
+                <button
+                  onClick={() => printReport('synthesis')}
+                  className="w-full py-2 rounded-lg text-xs font-semibold border"
+                  style={{ background: 'transparent', border: '1px solid var(--stratagent-gold)', color: 'var(--stratagent-gold)' }}>
+                  Print Capability Report
+                </button>
+              </div>
+            )}
+
+            {synthesisResult?.error && (
+              <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--stratagent-dark)', border: '1px solid #ef4444', color: '#ef4444' }}>
+                {synthesisResult.error}
+              </div>
+            )}
+
+            {synthesisResult && !synthesisResult.error && (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-sm font-bold mb-1" style={{ color: 'var(--stratagent-text)' }}>{synthesisResult.company_name}</div>
+                  <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>{synthesisResult.report_title}</div>
+                </div>
+                {synthesisResult.executive_summary && (
+                  <div className="p-3 rounded-lg" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-gold)' }}>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-1" style={{ color: 'var(--stratagent-gold)' }}>Executive Summary</div>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--stratagent-text)' }}>{synthesisResult.executive_summary}</p>
+                  </div>
+                )}
+                {synthesisResult.product_range?.products?.length > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: 'var(--stratagent-muted)' }}>Product Range</div>
+                    <div className="text-xs mb-2 font-semibold" style={{ color: 'var(--stratagent-text)' }}>{synthesisResult.product_range.headline}</div>
+                    {synthesisResult.product_range.products.map((p: any, i: number) => (
+                      <div key={i} className="p-3 rounded-lg mb-2" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                        <div className="text-xs font-semibold mb-0.5" style={{ color: 'var(--stratagent-text)' }}>{p.name}</div>
+                        <div className="text-xs mb-1" style={{ color: 'var(--stratagent-muted)' }}>{p.description}</div>
+                        {p.operating_envelope && <div className="text-xs" style={{ color: '#60a5fa' }}>Specs: {p.operating_envelope}</div>}
+                        {p.applications && <div className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>Applications: {p.applications}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {synthesisResult.technical_differentiators?.length > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: 'var(--stratagent-muted)' }}>Technical Differentiators</div>
+                    {synthesisResult.technical_differentiators.map((d: string, i: number) => (
+                      <div key={i} className="text-xs mb-1 pl-3 border-l-2" style={{ color: 'var(--stratagent-text)', borderColor: 'var(--stratagent-gold)' }}>{d}</div>
+                    ))}
+                  </div>
+                )}
+                {synthesisResult.target_buyer_profiles?.length > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: 'var(--stratagent-muted)' }}>Target Buyers</div>
+                    {synthesisResult.target_buyer_profiles.map((b: any, i: number) => (
+                      <div key={i} className="p-3 rounded-lg mb-2" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                        <div className="text-xs font-semibold mb-0.5" style={{ color: 'var(--stratagent-text)' }}>{b.buyer_type}</div>
+                        <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>{b.why_they_buy}</div>
+                        {b.typical_application && <div className="text-xs mt-0.5" style={{ color: '#60a5fa' }}>{b.typical_application}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {synthesisResult.common_objections?.length > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: 'var(--stratagent-muted)' }}>Objection Handling</div>
+                    {synthesisResult.common_objections.map((o: any, i: number) => (
+                      <div key={i} className="p-3 rounded-lg mb-2" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                        <div className="text-xs font-semibold mb-1" style={{ color: '#f97316' }}>"{o.objection}"</div>
+                        <div className="text-xs" style={{ color: 'var(--stratagent-text)' }}>{o.response}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {synthesisResult.competitive_positioning && (
+                  <div className="p-3 rounded-lg" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                    <div className="text-xs uppercase tracking-widest font-semibold mb-1" style={{ color: 'var(--stratagent-muted)' }}>Competitive Position</div>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--stratagent-text)' }}>{synthesisResult.competitive_positioning}</p>
+                  </div>
+                )}
+                <div className="text-xs pt-2" style={{ color: 'var(--stratagent-muted)', borderTop: '1px solid var(--stratagent-border)' }}>
+                  Prepared by {synthesisResult.prepared_by} -- {synthesisResult.prepared_for_org} -- {synthesisResult.contact_email}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Q&A TAB */}
+        {reportTab === 'qa' && (
+          <div>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={qaQuestion}
+                onChange={e => setQaQuestion(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && askQuestion()}
+                placeholder="Ask anything about this supplier..."
+                className="flex-1 px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }}
+              />
+              <button
+                onClick={askQuestion}
+                disabled={qaLoading || !qaQuestion.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                {qaLoading ? '...' : 'Ask'}
+              </button>
+            </div>
+            {qaResult?.error && (
+              <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--stratagent-dark)', border: '1px solid #ef4444', color: '#ef4444' }}>
+                {qaResult.error}
+              </div>
+            )}
+            {qaResult && !qaResult.error && (
+              <div className="space-y-3">
+                <div className="p-4 rounded-lg" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-gold)' }}>
+                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--stratagent-muted)' }}>Q: {qaResult.question}</div>
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--stratagent-text)' }}>{qaResult.answer}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs px-2 py-0.5 rounded font-semibold"
+                        style={{
+                          background: qaResult.confidence === 'HIGH' ? '#052e16' : qaResult.confidence === 'MEDIUM' ? '#1a1500' : '#1a0a0a',
+                          color: qaResult.confidence === 'HIGH' ? '#10b981' : qaResult.confidence === 'MEDIUM' ? 'var(--stratagent-gold)' : '#ef4444',
+                          border: `1px solid ${qaResult.confidence === 'HIGH' ? '#10b981' : qaResult.confidence === 'MEDIUM' ? 'var(--stratagent-gold)' : '#ef4444'}`
+                        }}>
+                    {qaResult.confidence} CONFIDENCE
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>{qaResult.confidence_reason}</span>
+                </div>
+                {qaResult.missing_intel && (
+                  <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                    To answer more precisely: {qaResult.missing_intel}
+                  </div>
+                )}
+                {qaResult.kb_fields_used?.length > 0 && (
+                  <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                    Sources: {qaResult.kb_fields_used.join(', ')}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
     </div>

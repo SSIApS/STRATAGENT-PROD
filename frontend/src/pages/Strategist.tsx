@@ -487,6 +487,17 @@ export default function Strategist({ session }: { session: Session }) {
                     <span className="ml-auto text-xs font-mono" style={{ color: col }}>{sig.relevance_score}</span>
                   </div>
                   <div className="text-xs font-semibold mb-0.5" style={{ color: 'var(--stratagent-text)' }}>{sig.headline}</div>
+                  {sig.trigger_match && (
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
+                            style={{ background: '#E87A0022', color: '#E87A00', border: '1px solid #E87A0044' }}>
+                        &#9889; TRIGGER: {sig.trigger_match.trigger_title}
+                      </span>
+                      {sig.trigger_match.lead_time_days && (
+                        <span className="text-xs" style={{ color: '#666' }}>~{sig.trigger_match.lead_time_days}d window</span>
+                      )}
+                    </div>
+                  )}
                   {sig.affected_suppliers?.length > 0 && (
                     <div className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
                       Relevant for: {sig.affected_suppliers.join(', ')}

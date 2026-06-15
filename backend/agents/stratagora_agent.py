@@ -568,6 +568,46 @@ async def run_product_scan(kb: dict, channels: list[str] | None = None, geograph
 # Full portfolio scan (B2B + consumer, auto-routed by sector scan_mode)
 # ---------------------------------------------------------------------------
 
+def _score_signal_against_triggers(signal: dict, all_triggers: list) -> dict | None:
+    """
+    Match a STRATAGORA signal against verified deal triggers using keyword overlap.
+    Returns the best-matching trigger or None if no match.
+    Used in run_full_scan to boost relevance scores and tag matched signals.
+    """
+    text = (signal.get("headline", "") + " " + signal.get("detail", "")).lower()
+    signal_type = signal.get("signal_type", "")
+
+    # Signal type -> trigger types that naturally align
+    type_alignment = {
+        "CAPEX":           ["CAPEX", "ESG"],
+        "REGULATORY":      ["REGULATORY", "ESG"],
+        "TENDER":          ["CAPEX", "REGULATORY", "SEASONAL"],
+        "LEADERSHIP_CHANGE": ["M&A", "COMPETITIVE"],
+        "STRATEGIC_SHIFT": ["M&A", "TECHNOLOGY", "COMPETITIVE"],
+        "SECTOR_TREND":    ["TECHNOLOGY", "ESG", "REGULATORY", "SEASONAL"],
+        "NEWS_EVENT":      ["CAPEX", "M&A", "COMPETITIVE", "HIRING"],
+    }
+    preferred_types = type_alignment.get(signal_type, [])
+
+    best_match = None
+    best_score = 0
+
+    for trigger in all_triggers:
+        keywords = [k.lower() for k in (trigger.get("scan_keywords") or [])]
+        if not keywords:
+            continue
+        hits = sum(1 for kw in keywords if kw in text)
+        if hits == 0:
+            continue
+        type_bonus = 2 if trigger.get("trigger_type") in preferred_types else 0
+        score = hits + type_bonus
+        if score > best_score:
+            best_score = score
+            best_match = trigger
+
+    return best_match if best_score >= 1 else None
+
+
 async def run_full_scan(kbs: list, geography: str = "Denmark, Scandinavia, Northern Europe") -> dict:
     """
     Full STRATAGORA market scan across all KB sectors.
@@ -644,7 +684,29 @@ async def run_full_scan(kbs: list, geography: str = "Denmark, Scandinavia, North
             "top_signal":    signals[0]["headline"] if signals else None,
         })
 
-    # Store all signals in Firestore
+    # Collect verified deal triggers from all KBs for signal scoring
+    all_triggers = []
+    for kb in kbs:
+        for t in (kb.get("deal_triggers") or []):
+            if t.get("jason_verified") or t.get("source") == "jason_verified":
+                all_triggers.append(t)
+
+    # Score signals against deal triggers -- boost relevance + tag matches
+    if all_triggers:
+        for sig in all_signals:
+            matched = _score_signal_against_triggers(sig, all_triggers)
+            if matched:
+                sig["trigger_match"] = {
+                    "trigger_id":    matched.get("id", ""),
+                    "trigger_type":  matched.get("trigger_type", ""),
+                    "trigger_title": matched.get("title", ""),
+                    "lead_time_days": matched.get("lead_time_days", 90),
+                }
+                # Boost score up to 15 points for trigger-matched signals
+                boost = min(15, 100 - sig.get("relevance_score", 50))
+                sig["relevance_score"] = min(100, sig.get("relevance_score", 50) + boost)
+
+        # Store all signals in Firestore
     stored = 0
     for sig in all_signals:
         try:

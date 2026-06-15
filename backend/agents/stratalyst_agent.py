@@ -945,3 +945,152 @@ Return JSON only:
         }
     except Exception:
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Deal Trigger Generator
+# ---------------------------------------------------------------------------
+
+TRIGGER_TYPES = [
+    "CAPEX",        # Capital expenditure - plant builds, facility expansions
+    "REGULATORY",   # New standards, compliance deadlines, audits
+    "HIRING",       # Job postings that signal operational change
+    "TECHNOLOGY",   # Technology adoption or upgrade cycles
+    "M&A",          # Mergers, acquisitions, ownership changes
+    "ESG",          # Sustainability mandates, decarbonisation targets
+    "SEASONAL",     # Predictable buying windows tied to calendar
+    "COMPETITIVE",  # Competitor weakness/exit creating buying window
+]
+
+async def generate_deal_triggers(
+    company_name: str,
+    intelligence_seed: dict,
+    profile: dict,
+) -> list:
+    """
+    Synthesise structured deal triggers from the intelligence seed signal_recognition
+    block plus broader profile context. Returns a list of typed trigger objects.
+
+    Each trigger:
+      id, trigger_type, title, description, scan_keywords[], lead_time_days,
+      confidence, source
+    """
+    import uuid
+
+    def sv(block: str, field: str) -> str:
+        return ((intelligence_seed.get(block) or {}).get(field) or {}).get("value", "") or ""
+
+    product       = sv("identity", "product_plain")
+    buyer_type    = sv("buyer_intelligence", "buyer_type")
+    use_case      = sv("buyer_intelligence", "use_case")
+    win_when      = sv("winning_conditions", "we_win_when")
+    lose_when     = sv("winning_conditions", "we_lose_when")
+    differentiator = sv("winning_conditions", "differentiator")
+    triggers_raw  = sv("signal_recognition", "trigger_events")
+    tender_kw     = sv("signal_recognition", "tender_keywords")
+    capex_raw     = sv("signal_recognition", "capex_indicators")
+    reg_raw       = sv("signal_recognition", "regulatory_drivers")
+    seasonal_raw  = sv("signal_recognition", "seasonal_patterns")
+    geography     = sv("commercial_reality", "geography")
+
+    # Supplement with profile fields if seed is thin
+    if not product:
+        product = str(profile.get("products_services", "") or profile.get("product_range", ""))[:400]
+    if not buyer_type:
+        buyer_type = str(profile.get("target_customers", "") or profile.get("buyer_profiles", ""))[:300]
+
+    prompt = f"""
+You are STRATALYST, an intelligence agent for STRATAGENT B2B sales platform.
+
+Your task: analyse what is known about this supplier and generate a structured list of
+DEAL TRIGGERS -- the real-world events that reliably signal a prospect is entering a buying
+cycle for this supplier's products or services.
+
+These triggers will be used by an AI agent to scan news feeds, job boards, tender portals,
+and company announcements to identify HOT prospects in real time. They must be:
+- Specific enough to generate precise search keywords
+- Predictive -- they appear BEFORE the purchase decision, not after
+- Tied to this specific supplier's product/service reality
+
+SUPPLIER: {company_name}
+Product / service: {product or "not specified"}
+Buyer type: {buyer_type or "not specified"}
+Use case: {use_case or "not specified"}
+Geography: {geography or "not specified"}
+Wins when: {win_when or "not specified"}
+Loses when: {lose_when or "not specified"}
+Differentiator: {differentiator or "not specified"}
+
+EXISTING SIGNAL DATA FROM SEED (use as input, synthesise into structured triggers):
+- Trigger events: {triggers_raw or "none"}
+- Capex indicators: {capex_raw or "none"}
+- Regulatory drivers: {reg_raw or "none"}
+- Seasonal patterns: {seasonal_raw or "none"}
+- Tender keywords: {tender_kw or "none"}
+
+TRIGGER TYPES AVAILABLE: {", ".join(TRIGGER_TYPES)}
+
+Generate 5-8 deal triggers. For each trigger:
+- trigger_type: one of the types above
+- title: short label (max 8 words)
+- description: one precise sentence -- what happens in the world that creates demand
+- scan_keywords: 4-6 search terms an agent would use to find this event in news/job boards/tenders
+  These must be specific enough to return relevant results, not generic industry terms
+- lead_time_days: typical number of days BEFORE a purchase that this signal appears (estimate)
+- rationale: one sentence -- why this signal specifically triggers a purchase of THIS supplier's product
+
+Return a JSON array only:
+[
+  {{
+    "trigger_type": "CAPEX",
+    "title": "New production facility announced",
+    "description": "A prospect announces construction or expansion of a manufacturing or processing facility.",
+    "scan_keywords": ["new plant construction", "facility expansion", "greenfield project", "production capacity increase"],
+    "lead_time_days": 120,
+    "rationale": "New facilities require [supplier product] before commissioning."
+  }}
+]
+
+Return only the JSON array. No markdown fences, no commentary.
+"""
+
+    response = await generate(prompt, temperature=0.25)
+
+    try:
+        cleaned = re.sub(r"```(?:json)?\n?", "", response).strip()
+        start = cleaned.find("[")
+        end = cleaned.rfind("]") + 1
+        if start < 0 or end <= start:
+            return []
+        raw_list = json.loads(cleaned[start:end])
+    except Exception:
+        return []
+
+    triggers = []
+    for item in raw_list:
+        t_type = str(item.get("trigger_type", "")).upper().strip()
+        if t_type not in TRIGGER_TYPES:
+            t_type = "CAPEX"
+        title = str(item.get("title", "")).strip()
+        description = str(item.get("description", "")).strip()
+        keywords = [str(k).strip() for k in (item.get("scan_keywords") or []) if str(k).strip()]
+        lead_time = int(item.get("lead_time_days", 90)) if str(item.get("lead_time_days", "90")).isdigit() else 90
+        rationale = str(item.get("rationale", "")).strip()
+
+        if not title or not description:
+            continue
+
+        triggers.append({
+            "id": str(uuid.uuid4()),
+            "trigger_type": t_type,
+            "title": title,
+            "description": description,
+            "scan_keywords": keywords[:6],
+            "lead_time_days": lead_time,
+            "rationale": rationale,
+            "confidence": "high",
+            "source": "agent_generated",
+            "jason_verified": False,
+        })
+
+    return triggers

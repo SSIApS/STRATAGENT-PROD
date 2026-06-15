@@ -39,7 +39,7 @@ Only SYNTAX ERR and NON-ASCII errors in the ERRORS block require action.
 | STRATALINK | /stratalink | Done | Done | Affiliate intelligence + saved searches |
 | STRATEGIST | /strategist | Done | Done | Monday Brief with STRATAGORA signals |
 | STRATAGORA | /stratagora | Done | Done | Market intelligence scan, signal storage |
-| Supplier Reports | /supplier-reports | Done | NEEDED | AG builds the frontend (see below) |
+| Supplier Reports | /supplier-reports | Done | Done | Audit, Synthesis, Q&A tabs + print/export (3 types) |
 | Product Analysis (PAM) | /product-analysis | Done | Done | Archetype-based product market scans |
 
 ---
@@ -105,34 +105,4 @@ Rough schema: prospect -> pipeline stage (qualify/propose/negotiate/closed) -> r
 cause silent module-import failures on Windows via CIFS. Use ASCII only. This broke the app after
 the June 12 session -- orphaned prompt block with ━ characters caused SyntaxError in output_agent.py.
 
-**f-string double-brace:** Inside `{expression}` in an f-string, `{{key: val}}` = a SET containing
-a dict (TypeError). Pre-compute complex dicts as variables before the f-string.
-
-**Gemini JSON fence:** Gemini wraps responses in backtick, `'''`, or `"""` fences unpredictably.
-Strip all three styles before parsing. Use find("{")/rfind("}") as safety net.
-
-**Firestore sort:** Never combine order_by + where in one Firestore chain -- needs composite index.
-Fetch docs, sort in Python.
-
-**Profile fields as dicts:** Gemini sometimes returns dicts instead of strings for profile fields.
-Always wrap with str() before slicing or string operations.
-
-**Gemini 503:** Free-tier key gets rate-limited. services/gemini.py retries 3x with exponential
-backoff. Research Queue saves failed FI requests for one-click retry.
-
----
-
-## Handoff Log (newest first)
-
-| Date | Who | What |
-|------|-----|------|
-| 2026-06-15 | Claude | Fixed output_agent.py SyntaxError (orphan block + non-ASCII). Pushed branch. Handoff updated. |
-| 2026-06-12 | Claude | PAM Session 2: scan_focus field, Scan Instructions UI, vault docx export with STRATAGENT branding. |
-| 2026-06-11 | Claude | PAM built: product_analysis_agent.py, product_registry.py router, ProductAnalysis.tsx, 4 archetypes. |
-| 2026-06-09 | Claude | STRATAMESH built. Intelligence Seed built. STRATAGORA consumer extension. NACE classification planned. |
-| 2026-06-08 | Claude | Research Queue, Gemini retry backoff, check_before_startup.py, output agent seed block fix. |
-| 2026-06-07 | Claude | STRATEGIST brief working. STRATAGORA confirmed. Port 9000. ASCII hardening. |
-| 2026-06-06 | Claude | Supplier Reports backend, Value Brief .docx export, Manual Seeds, STRATAGORA crawl phase. |
-| 2026-06-05 | Claude | STRATADAR, STRATEGIST v1, auto-enrich, deep scan, FI inline output, signal recency. |
-| 2026-06-04 | Claude | KB grid layout, drag reorder, STRATALYST enrichment agent. |
-| 2026-06-03 | Claude | KB supplier list, FI supplier dropdown, folder sync, product images, buying signals. |
+**f-string double-brace:** Inside `{expression}` in an f-string, `{{key: val}}` = a S
