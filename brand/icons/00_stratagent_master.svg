@@ -1,0 +1,10 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" rx="24" fill="#0f1117"/>
+  <path d="M100 30L40 58V110C40 146 65 170 100 184C135 170 160 146 160 110V58L100 30Z" stroke="#d4a843" stroke-width="5" fill="none" stroke-linejoin="round"/>
+  <path d="M76 78C76 72 81 67 87 67H113C119 67 124 72 124 78C124 84 119 89 113 89H87C81 89 76 94 76 100C76 106 81 111 87 111H113C119 111 124 116 124 122" stroke="#d4a843" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <circle cx="148" cy="60" r="5" fill="#d4a843" opacity="0.6"/>
+  <circle cx="162" cy="76" r="5" fill="#d4a843" opacity="0.4"/>
+  <circle cx="52" cy="60" r="5" fill="#d4a843" opacity="0.6"/>
+  <circle cx="38" cy="76" r="5" fill="#d4a843" opacity="0.4"/>
+  <text x="100" y="163" font-family="system-ui,sans-serif" font-size="13" font-weight="700" letter-spacing="4" fill="#d4a843" text-anchor="middle" opacity="0.5">STRATAGENT</text>
+</svg>

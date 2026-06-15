@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { api, setSession } from '../services/api'
 import type { Session } from '../App'
+import { searchNace, getNaceByCode } from '../data/naceData'
 import IntelligenceDepthGauge from '../components/KnowledgeBase/IntelligenceDepthGauge'
 import GapList from '../components/KnowledgeBase/GapList'
 
@@ -13,6 +15,7 @@ function thresholdColor(label: string) {
 }
 
 export default function KnowledgeBase({ session }: { session: Session }) {
+  const location = useLocation()
   const [step, setStep] = useState<Step>('list')
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [listLoading, setListLoading] = useState(true)
@@ -31,7 +34,17 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   const [imgTags, setImgTags] = useState('')
   const [imgLoading, setImgLoading] = useState(false)
   const [productImages, setProductImages] = useState<any[]>([])
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set())
   const [imgSuccess, setImgSuccess] = useState<string | null>(null)
+
+  // Visual Intelligence
+  const [visualAnalysisLoading, setVisualAnalysisLoading] = useState(false)
+  const [visualAnalysisResult, setVisualAnalysisResult] = useState<any>(null)
+  const [productScanLoading, setProductScanLoading] = useState(false)
+  const [productScanResult, setProductScanResult] = useState<any>(null)
+  const [channelBriefLoading, setChannelBriefLoading] = useState(false)
+  const [channelBriefResult, setChannelBriefResult] = useState<any>(null)
+  const [exportDocxLoading, setExportDocxLoading] = useState<string | null>(null) // which export is loading
 
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncResult, setSyncResult] = useState<any>(null)
@@ -46,6 +59,13 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   const [noteInput, setNoteInput] = useState('')
   const [noteLoading, setNoteLoading] = useState(false)
   const [noteResult, setNoteResult] = useState<any>(null)
+
+  // Quick Fill — direct profile field entry
+  const [quickFillOpen, setQuickFillOpen] = useState(false)
+  const [quickFillFields, setQuickFillFields] = useState<Record<string, string>>({})
+  const [quickFillLoading, setQuickFillLoading] = useState(false)
+  const [quickFillSaved, setQuickFillSaved] = useState(false)
+
   const [interviewMode, setInterviewMode] = useState(false)
   const [interviewLoading, setInterviewLoading] = useState(false)
   const [interviewQuestions, setInterviewQuestions] = useState<any[]>([])
@@ -70,6 +90,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   const [seedBuyerType, setSeedBuyerType] = useState('')
   const [seedUseCase, setSeedUseCase] = useState('')
   const [seedNotThis, setSeedNotThis] = useState('')
+  const [supplierLocation, setSupplierLocation] = useState('')
   const [seedSaving, setSeedSaving] = useState(false)
   const [draftSeed, setDraftSeed] = useState<any>(null)
   const [buildingSeed, setBuildingSeed] = useState(false)
@@ -77,6 +98,17 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   const [expandedSeedBlock, setExpandedSeedBlock] = useState<string | null>('identity')
   const [verifyingField, setVerifyingField] = useState<{block: string, field: string} | null>(null)
   const [verifyValue, setVerifyValue] = useState('')
+  // Industry Targeting
+  const [industryTargetingOpen, setIndustryTargetingOpen] = useState(false)
+  const [naceInput, setNaceInput] = useState('')
+  const [targetNaceCodes, setTargetNaceCodes] = useState<string[]>([])
+  const [industryTargetingNotes, setIndustryTargetingNotes] = useState('')
+  const [savingIndustryTargeting, setSavingIndustryTargeting] = useState(false)
+  const [industryTargetingSaved, setIndustryTargetingSaved] = useState(false)
+  const [naceDropdown, setNaceDropdown] = useState(false)
+  const [naceSuggestions, setNaceSuggestions] = useState<{code:string;label:string;rationale:string}[]>([])
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
+
   const [supplierOrder, setSupplierOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('stratagent_kb_order') || '[]') } catch { return [] }
   })
@@ -87,6 +119,19 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   setSession(session.sessionId)
 
   useEffect(() => { loadSuppliers() }, [])
+
+  // Auto-select supplier when navigated from STRATEGIST action card
+  useEffect(() => {
+    const state = location.state as any
+    if (!state?.supplier_id && !state?.supplier_name) return
+    // Wait until suppliers are loaded, then find and open the matching one
+    if (suppliers.length === 0) return
+    const match = suppliers.find((s: any) =>
+      (state.supplier_id && (s.supplier_id || s.id) === state.supplier_id) ||
+      (state.supplier_name && s.company_name?.toLowerCase() === state.supplier_name?.toLowerCase())
+    )
+    if (match) openSupplier(match)
+  }, [suppliers, location.state])
 
   function handleGapClick(element: string) {
     setUrlFocusElement(element)
@@ -156,6 +201,30 @@ export default function KnowledgeBase({ session }: { session: Session }) {
       const res = await api.get('/knowledge-base/' + id)
       setKb(res.data)
       setDraftSeed(res.data.draft_seed || null)
+      // Sync industry targeting state
+      const targeting = res.data?.intelligence_seed?.industry_targeting || {}
+      setTargetNaceCodes(targeting.target_nace || [])
+      setIndustryTargetingNotes(targeting.notes || '')
+      setIndustryTargetingOpen(false)
+      setIndustryTargetingSaved(false)
+      // Pre-populate from cached KB analysis -- avoids re-running on every open
+      const kbData = res.data
+      if (kbData.visual_analysis && kbData.visual_analysis_at) {
+        setVisualAnalysisResult({
+          analysis: kbData.visual_analysis,
+          images_used: kbData.visual_analysis_images_used || 1,
+          cached: true,
+          analyzed_at: kbData.visual_analysis_at,
+        })
+      } else {
+        setVisualAnalysisResult(null)
+      }
+      if (kbData.last_scan && kbData.last_scan_at) {
+        setProductScanResult({ ...kbData.last_scan, cached: true, scanned_at: kbData.last_scan_at })
+      } else {
+        setProductScanResult(null)
+      }
+      setChannelBriefResult(null)
       setStep('view')
       loadProductImages(id)
       loadFieldNotes(id)
@@ -172,6 +241,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
         buyer_type: seedBuyerType.trim() || null,
         use_case: seedUseCase.trim() || null,
         not_this: seedNotThis.trim() || null,
+        supplier_location: supplierLocation.trim() || null,
       })
       setKb(res.data)
       setStep('view')
@@ -207,7 +277,9 @@ export default function KnowledgeBase({ session }: { session: Session }) {
     form.append('context_note', urlContext)
     try {
       const res = await api.post('/knowledge-base/' + kb.supplier_id + '/add-url', form)
-      setKb(res.data)
+      if (res.data.intelligence_depth) {
+        setKb((prev: any) => ({ ...prev, intelligence_depth: res.data.intelligence_depth }))
+      }
       if (res.data.newly_unlocked) setNewlyUnlocked(res.data.newly_unlocked)
       setUrlInput('')
       setUrlContext('')
@@ -215,6 +287,23 @@ export default function KnowledgeBase({ session }: { session: Session }) {
       loadSuppliers()
     } catch (e: any) { alert(e.response?.data?.detail || 'Failed to add URL') }
     finally { setUrlLoading(false) }
+  }
+
+  async function saveQuickFill() {
+    if (!kb) return
+    const nonEmpty = Object.fromEntries(Object.entries(quickFillFields).filter(([, v]) => v.trim()))
+    if (!Object.keys(nonEmpty).length) return
+    setQuickFillLoading(true)
+    try {
+      const res = await api.patch('/knowledge-base/' + kb.supplier_id + '/profile-fields', nonEmpty)
+      if (res.data.intelligence_depth) {
+        setKb((prev: any) => ({ ...prev, intelligence_depth: res.data.intelligence_depth }))
+      }
+      setQuickFillSaved(true)
+      setTimeout(() => setQuickFillSaved(false), 3000)
+      loadSuppliers()
+    } catch (e: any) { alert(e.response?.data?.detail || 'Save failed') }
+    finally { setQuickFillLoading(false) }
   }
 
   async function uploadProductImage(file: File) {
@@ -231,7 +320,9 @@ export default function KnowledgeBase({ session }: { session: Session }) {
       setImgSuccess('"' + res.data.product_name + '" saved and searchable in proposals.')
       setImgProductName(''); setImgBrand(''); setImgTags('')
       const imgRes = await api.get('/knowledge-base/' + kb.supplier_id + '/images')
-      setProductImages(imgRes.data || [])
+      const loadedImgs1 = imgRes.data || []
+      setProductImages(loadedImgs1)
+      setSelectedImageIds(new Set(loadedImgs1.map((img: any) => img.image_id || img.id).filter(Boolean)))
     } catch (e: any) { alert(e.response?.data?.detail || 'Image upload failed') }
     finally { setImgLoading(false) }
   }
@@ -239,7 +330,9 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   async function loadProductImages(supplierId: string) {
     try {
       const res = await api.get('/knowledge-base/' + supplierId + '/images')
-      setProductImages(res.data || [])
+      const loadedImgs2 = res.data || []
+      setProductImages(loadedImgs2)
+      setSelectedImageIds(new Set(loadedImgs2.map((img: any) => img.image_id || img.id).filter(Boolean)))
     } catch { setProductImages([]) }
   }
 
@@ -380,6 +473,80 @@ export default function KnowledgeBase({ session }: { session: Session }) {
     }
   }
 
+  async function runVisualAnalysis(forceRerun = false) {
+    setVisualAnalysisLoading(true)
+    if (forceRerun) setVisualAnalysisResult(null)
+    try {
+      const res = await api.post('/knowledge-base/' + kb.supplier_id + '/visual-analysis', {
+        competitor_context: '',
+        force_rerun: forceRerun,
+        selected_image_ids: selectedImageIds.size > 0 ? Array.from(selectedImageIds) : null,
+      })
+      setVisualAnalysisResult(res.data)
+    } catch (e: any) {
+      const detail = e.response?.data?.detail
+      alert(typeof detail === 'string' ? detail : detail?.message || JSON.stringify(detail) || 'Visual analysis failed')
+    } finally {
+      setVisualAnalysisLoading(false)
+    }
+  }
+
+  async function runProductScan(forceRerun = false) {
+    setProductScanLoading(true)
+    if (forceRerun) setProductScanResult(null)
+    try {
+      const res = await api.post('/stratagora/product-scan/' + kb.supplier_id, { force_rerun: forceRerun })
+      setProductScanResult(res.data)
+    } catch (e: any) {
+      const d = e.response?.data?.detail
+      alert(typeof d === 'string' ? d : d?.message || d?.error || JSON.stringify(d) || 'Product scan failed')
+    } finally {
+      setProductScanLoading(false)
+    }
+  }
+
+  async function exportDocx(endpoint: string, body: object, filename: string) {
+    setExportDocxLoading(endpoint)
+    try {
+      const res = await api.post(endpoint, body, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const link = document.createElement('a')
+      link.href = url
+      const cd = res.headers['content-disposition'] || ''
+      const match = cd.match(/filename="?([^"]+)"?/)
+      link.download = match ? match[1] : filename
+      link.click()
+      window.URL.revokeObjectURL(url)
+    } catch (e: any) {
+      if (e.response?.data instanceof Blob) {
+        const text = await e.response.data.text()
+        try { alert('Export failed: ' + (JSON.parse(text).detail || text)) }
+        catch { alert('Export failed: ' + text) }
+      } else {
+        alert('Export failed: ' + (e.response?.data?.detail || e.message || 'unknown error'))
+      }
+    } finally {
+      setExportDocxLoading(null)
+    }
+  }
+
+  async function runChannelBrief() {
+    setChannelBriefLoading(true)
+    setChannelBriefResult(null)
+    try {
+      const res = await api.post('/knowledge-base/' + kb.supplier_id + '/channel-brief', {
+        visual_analysis: visualAnalysisResult?.analysis || null,
+        scan_result: productScanResult || null,
+      })
+      setChannelBriefResult(res.data)
+    } catch (e: any) {
+      const d = e.response?.data?.detail
+      alert(typeof d === 'string' ? d : d?.message || 'Brief generation failed')
+    } finally {
+      setChannelBriefLoading(false)
+    }
+  }
+
   function toggleSource(idx: number) {
     setApprovedSources(prev => {
       const next = new Set(prev)
@@ -447,6 +614,33 @@ export default function KnowledgeBase({ session }: { session: Session }) {
     finally { setSeedSaving(false) }
   }
 
+  async function saveIndustryTargeting() {
+    setSavingIndustryTargeting(true)
+    try {
+      await api.post('/stratalyst/' + kb.supplier_id + '/update-industry-targeting', {
+        target_nace: targetNaceCodes,
+        target_sic: [],
+        notes: industryTargetingNotes.trim(),
+      })
+      setKb((prev: any) => ({
+        ...prev,
+        intelligence_seed: {
+          ...(prev.intelligence_seed || {}),
+          industry_targeting: {
+            target_nace: targetNaceCodes,
+            target_sic: [],
+            notes: industryTargetingNotes.trim(),
+            jason_verified: true,
+          }
+        }
+      }))
+      setIndustryTargetingSaved(true)
+      setTimeout(() => setIndustryTargetingSaved(false), 3000)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Save failed')
+    } finally { setSavingIndustryTargeting(false) }
+  }
+
   async function buildSeed() {
     setBuildingSeed(true)
     setSeedBuildResult(null)
@@ -481,7 +675,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-black" style={{ color: 'var(--stratagent-text)' }}>
+            <h2 className="text-2xl font-black" style={{ color: '#d4a843' }}>
               Knowledge Base
             </h2>
             <p className="text-sm mt-1 flex items-center gap-3" style={{ color: 'var(--stratagent-muted)' }}>
@@ -662,6 +856,18 @@ export default function KnowledgeBase({ session }: { session: Session }) {
               className="w-full px-4 py-3 rounded-lg text-sm outline-none"
               style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }} />
           </div>
+          <div>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--stratagent-muted)' }}>
+              Supplier Location
+            </label>
+            <p className="text-xs mb-2" style={{ color: 'var(--stratagent-muted)' }}>
+              City, State/Region, Country — anchors all geo-aware channel research and market scanning.
+            </p>
+            <input value={supplierLocation} onChange={e => setSupplierLocation(e.target.value)}
+              placeholder="e.g. Omaha, Nebraska, USA"
+              className="w-full px-4 py-3 rounded-lg text-sm outline-none"
+              style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }} />
+          </div>
 
           {/* STRATALYST Draft Seed proposal — shown when scan proposes but no seed confirmed yet */}
           {draftSeed && !kb?.manual_seed?.product_plain && (
@@ -747,6 +953,13 @@ export default function KnowledgeBase({ session }: { session: Session }) {
   // VIEW
   return (
     <div className="max-w-4xl mx-auto">
+      {/* ── Module identity ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-5">
+        <div style={{ width: 3, height: 18, borderRadius: 2, background: '#d4a843', flexShrink: 0 }} />
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#d4a843' }}>
+          KNOWLEDGE BASE
+        </span>
+      </div>
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-3">
           <button onClick={() => setStep('list')}
@@ -799,7 +1012,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
             ) : (
               <div className="flex items-center gap-1.5 mt-1">
                 {kb?.website_url ? (
-                  <a href={kb.website_url} target="_blank" rel="noopener noreferrer"
+                  <a href={kb.website_url?.startsWith('http') ? kb.website_url : `https://${kb.website_url}`} target="_blank" rel="noopener noreferrer"
                      className="text-xs hover:underline"
                      style={{ color: 'var(--stratagent-muted)' }}>
                     {kb.website_url.replace(/^https?:\/\//, '')}
@@ -816,6 +1029,36 @@ export default function KnowledgeBase({ session }: { session: Session }) {
                 </button>
               </div>
             )}
+            {/* Supplier location -- shown when set, with inline edit */}
+            <div className="flex items-center gap-1.5 mt-1">
+              {kb?.supplier_location ? (
+                <span className="text-xs flex items-center gap-1" style={{ color: 'var(--stratagent-muted)' }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  {kb.supplier_location}
+                </span>
+              ) : (
+                <span className="text-xs italic" style={{ color: 'var(--stratagent-muted)', opacity: 0.5 }}>
+                  No location set — add for geo-aware research
+                </span>
+              )}
+              <button
+                onClick={async () => {
+                  const loc = prompt('Supplier location (City, State, Country):', kb?.supplier_location || '')
+                  if (loc === null) return
+                  try {
+                    await api.patch('/knowledge-base/' + kb.supplier_id + '/profile-fields', { supplier_location: loc.trim() })
+                    const fresh = await api.get('/knowledge-base/' + kb.supplier_id)
+                    setKb(fresh.data)
+                  } catch { alert('Could not update location') }
+                }}
+                className="text-xs opacity-40 hover:opacity-100 px-1 py-0.5 rounded"
+                style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}
+                title="Edit location">
+                ✎
+              </button>
+            </div>
           </div>
         </div>
         <button onClick={() => { setCompanyName(''); setWebsiteUrl(''); setStep('create') }}
@@ -1079,6 +1322,250 @@ export default function KnowledgeBase({ session }: { session: Session }) {
         )
       })()}
 
+      {/* ── INDUSTRY TARGETING ── */}
+      {kb && (
+        <div className="mb-4 rounded-xl overflow-hidden"
+             style={{ border: '1px solid var(--stratagent-border)' }}>
+          <button
+            className="w-full px-4 py-3 flex items-center justify-between text-left"
+            style={{ background: 'var(--stratagent-panel)' }}
+            onClick={() => setIndustryTargetingOpen(o => !o)}>
+            <div>
+              <div className="text-xs uppercase tracking-widest font-semibold"
+                   style={{ color: 'var(--stratagent-gold)' }}>
+                Industry Targeting
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>
+                {targetNaceCodes.length > 0
+                  ? `${targetNaceCodes.length} NACE code${targetNaceCodes.length !== 1 ? 's' : ''} — ${targetNaceCodes.slice(0, 4).join(', ')}${targetNaceCodes.length > 4 ? '…' : ''}`
+                  : 'No codes set — add NACE Rev.2 codes to enable industry match scoring'}
+              </div>
+            </div>
+            <span className="text-xs ml-4 flex-shrink-0" style={{ color: 'var(--stratagent-muted)' }}>
+              {industryTargetingOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {industryTargetingOpen && (
+            <div className="px-4 py-4 space-y-3" style={{ background: 'var(--stratagent-dark)' }}>
+              <p className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                NACE Rev. 2 codes (EU). Each prospect is automatically classified — codes here
+                drive the industry match badge in Field Intelligence and boost STRATAMESH signals.
+                Stage 2 will feed these into the SD score directly.
+              </p>
+
+              {/* Code pills */}
+              <div className="flex flex-wrap gap-2 min-h-[32px]">
+                {targetNaceCodes.length === 0 && (
+                  <span className="text-xs italic" style={{ color: 'var(--stratagent-muted)' }}>
+                    No codes yet
+                  </span>
+                )}
+                {targetNaceCodes.map((code) => (
+                  <span key={code}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-semibold"
+                        style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-gold)', color: 'var(--stratagent-gold)' }}>
+                    {code}
+                    <button
+                      onClick={() => setTargetNaceCodes(prev => prev.filter(c => c !== code))}
+                      className="opacity-60 hover:opacity-100 leading-none"
+                      style={{ color: 'var(--stratagent-gold)' }}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {/* Combobox search + manual entry */}
+              <div className="relative">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={naceInput}
+                    onChange={e => {
+                      setNaceInput(e.target.value)
+                      setNaceDropdown(e.target.value.trim().length > 0)
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') { setNaceDropdown(false); return }
+                      if ((e.key === 'Enter' || e.key === ',') && naceInput.trim()) {
+                        e.preventDefault()
+                        const code = naceInput.trim().replace(/,$/, '').toUpperCase()
+                        if (code && !targetNaceCodes.includes(code)) {
+                          setTargetNaceCodes(prev => [...prev, code])
+                        }
+                        setNaceInput('')
+                        setNaceDropdown(false)
+                      }
+                    }}
+                    onFocus={() => { if (naceInput.trim()) setNaceDropdown(true) }}
+                    onBlur={() => setTimeout(() => setNaceDropdown(false), 150)}
+                    placeholder="Search or type a code — e.g. C20, chemical, energy…"
+                    className="flex-1 px-3 py-1.5 rounded-lg text-xs font-mono outline-none"
+                    style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }}
+                  />
+                  <button
+                    onClick={() => {
+                      const code = naceInput.trim().replace(/,$/, '').toUpperCase()
+                      if (code && !targetNaceCodes.includes(code)) {
+                        setTargetNaceCodes(prev => [...prev, code])
+                      }
+                      setNaceInput('')
+                      setNaceDropdown(false)
+                    }}
+                    disabled={!naceInput.trim()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40"
+                    style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                    Add
+                  </button>
+                </div>
+
+                {/* Dropdown results */}
+                {naceDropdown && (() => {
+                  const hits = searchNace(naceInput)
+                  if (!hits.length) return null
+                  return (
+                    <div className="absolute z-50 w-full mt-1 rounded-lg overflow-hidden shadow-xl"
+                         style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-gold)' }}>
+                      {hits.map(entry => (
+                        <button
+                          key={entry.code}
+                          onMouseDown={e => {
+                            e.preventDefault()
+                            if (!targetNaceCodes.includes(entry.code)) {
+                              setTargetNaceCodes(prev => [...prev, entry.code])
+                            }
+                            setNaceInput('')
+                            setNaceDropdown(false)
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs hover:opacity-80 flex items-center gap-3"
+                          style={{ borderBottom: '1px solid var(--stratagent-border)' }}>
+                          <span className="font-mono font-bold flex-shrink-0 w-10"
+                                style={{ color: entry.level === 'section' ? 'var(--stratagent-gold)' : 'var(--stratagent-text)' }}>
+                            {entry.code}
+                          </span>
+                          <span style={{ color: 'var(--stratagent-muted)' }}>{entry.label}</span>
+                          {targetNaceCodes.includes(entry.code) && (
+                            <span className="ml-auto text-xs" style={{ color: '#22c55e' }}>✓</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* STRATALYST Suggest button */}
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    if (!kb) return
+                    setLoadingSuggestions(true)
+                    setNaceSuggestions([])
+                    try {
+                      const res = await api.post(`/stratalyst/${kb.supplier_id}/suggest-nace`)
+                      setNaceSuggestions(res.data?.suggestions || [])
+                    } catch (e: any) {
+                      alert(e.response?.data?.detail || 'Suggestion failed — build intelligence seed first')
+                    } finally {
+                      setLoadingSuggestions(false)
+                    }
+                  }}
+                  disabled={loadingSuggestions}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40 flex items-center gap-2"
+                  style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-gold)', color: 'var(--stratagent-gold)' }}>
+                  {loadingSuggestions ? (
+                    <>
+                      <span style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid #f59e0b44', borderTopColor: 'var(--stratagent-gold)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                      STRATALYST analysing…
+                    </>
+                  ) : (
+                    '⚡ STRATALYST — Suggest codes'
+                  )}
+                </button>
+
+                {naceSuggestions.length > 0 && (
+                  <div className="rounded-lg overflow-hidden"
+                       style={{ border: '1px solid var(--stratagent-gold-dim)' }}>
+                    <div className="px-3 py-2 flex items-center justify-between"
+                         style={{ background: 'var(--stratagent-panel)' }}>
+                      <span className="text-xs font-semibold" style={{ color: 'var(--stratagent-gold)' }}>
+                        {naceSuggestions.length} suggested codes
+                      </span>
+                      <button
+                        onClick={() => {
+                          const toAdd = naceSuggestions.map(s => s.code).filter(c => !targetNaceCodes.includes(c))
+                          setTargetNaceCodes(prev => [...prev, ...toAdd])
+                          setNaceSuggestions([])
+                        }}
+                        className="text-xs px-2 py-0.5 rounded font-semibold"
+                        style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                        Accept all
+                      </button>
+                    </div>
+                    {naceSuggestions.map(s => (
+                      <div key={s.code} className="px-3 py-2 flex items-start gap-3"
+                           style={{ borderTop: '1px solid var(--stratagent-border)', background: 'var(--stratagent-dark)' }}>
+                        <span className="font-mono font-bold text-xs flex-shrink-0 w-10 mt-0.5"
+                              style={{ color: 'var(--stratagent-text)' }}>
+                          {s.code}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold" style={{ color: 'var(--stratagent-text)' }}>{s.label}</div>
+                          <div className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>{s.rationale}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (!targetNaceCodes.includes(s.code)) {
+                              setTargetNaceCodes(prev => [...prev, s.code])
+                            }
+                            setNaceSuggestions(prev => prev.filter(x => x.code !== s.code))
+                          }}
+                          className="text-xs px-2 py-0.5 rounded flex-shrink-0"
+                          style={{ background: targetNaceCodes.includes(s.code) ? 'var(--stratagent-panel)' : 'var(--stratagent-gold)', color: targetNaceCodes.includes(s.code) ? 'var(--stratagent-muted)' : '#000', border: '1px solid var(--stratagent-border)' }}>
+                          {targetNaceCodes.includes(s.code) ? '✓ added' : '+ Add'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--stratagent-muted)' }}>
+                  Notes (optional)
+                </label>
+                <input
+                  type="text"
+                  value={industryTargetingNotes}
+                  onChange={e => setIndustryTargetingNotes(e.target.value)}
+                  placeholder="e.g. Focus on refineries and chemical plants"
+                  className="w-full px-3 py-1.5 rounded-lg text-xs outline-none"
+                  style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }}
+                />
+              </div>
+
+              {/* Save button */}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  onClick={saveIndustryTargeting}
+                  disabled={savingIndustryTargeting}
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40"
+                  style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                  {savingIndustryTargeting ? 'Saving…' : 'Save'}
+                </button>
+                {industryTargetingSaved && (
+                  <span className="text-xs font-semibold" style={{ color: '#22c55e' }}>
+                    ✓ Saved
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── MANUAL SEED EDIT FORM (slide-down) ── */}
       {editingSeed && (
         <div className="mb-4 p-5 rounded-xl space-y-4"
@@ -1196,6 +1683,101 @@ export default function KnowledgeBase({ session }: { session: Session }) {
         </div>
       </div>
 
+      {/* ── Quick Fill — direct profile field entry ── */}
+      <div className="mt-4 rounded-xl overflow-hidden"
+           style={{ border: '1px solid var(--stratagent-border)' }}>
+        <button
+          onClick={() => {
+            if (!quickFillOpen) {
+              // Pre-populate from current profile
+              const p = kb?.profile || {}
+              setQuickFillFields({
+                product_catalogue:       p.product_catalogue       || '',
+                technical_datasheets:    p.technical_datasheets    || '',
+                certifications:          p.certifications          || '',
+                case_studies:            p.case_studies            || '',
+                competitive_positioning: p.competitive_positioning || '',
+                pricing_framework:       p.pricing_framework       || '',
+                distribution_channels:   p.distribution_channels   || '',
+                reference_projects:      p.reference_projects      || '',
+                objections_responses:    p.objections_responses    || '',
+              })
+            }
+            setQuickFillOpen(o => !o)
+          }}
+          className="w-full flex items-center justify-between px-6 py-4"
+          style={{ background: 'var(--stratagent-panel)', color: 'var(--stratagent-text)' }}>
+          <div className="flex items-center gap-3">
+            <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--stratagent-muted)' }}>Quick Fill — Type What You Know</span>
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#1c1400', color: 'var(--stratagent-gold)', border: '1px solid #92400e' }}>
+              Direct entry · boosts depth instantly
+            </span>
+          </div>
+          <span style={{ color: 'var(--stratagent-muted)' }}>{quickFillOpen ? '▲' : '▼'}</span>
+        </button>
+
+        {quickFillOpen && (() => {
+          const FIELDS: { key: string; label: string; hint: string; weight: number }[] = [
+            { key: 'product_catalogue',       label: 'Products & Services',      hint: 'List the main products/services, model names, variants, capacities.',           weight: 20 },
+            { key: 'technical_datasheets',    label: 'Technical Specs',          hint: 'Key specs: dimensions, ratings, operating ranges, voltages, pressures.',        weight: 15 },
+            { key: 'certifications',          label: 'Certifications & Standards', hint: 'ISO, CE, ATEX, DNV, UL, FDA, REACH, NORSOK — anything certified/compliant.',  weight: 10 },
+            { key: 'case_studies',            label: 'Customer References',      hint: 'Named customers, projects, sectors served, outcomes delivered.',                weight: 20 },
+            { key: 'competitive_positioning', label: 'Competitive Positioning',  hint: 'What makes this supplier different? Why do customers choose them over rivals?', weight: 10 },
+            { key: 'pricing_framework',       label: 'Pricing Framework',        hint: 'Price points, volume tiers, MOQ, currency, typical contract size.',            weight: 8  },
+            { key: 'distribution_channels',   label: 'Distribution Channels',    hint: 'Direct, distributor network, webshop, private label, geography covered.',      weight: 12 },
+            { key: 'reference_projects',      label: 'Named Projects',           hint: 'Specific projects, sites, plant names, countries, scale (MW, km, units).',     weight: 10 },
+            { key: 'objections_responses',    label: 'FAQs & Objections',        hint: 'Common questions, concerns, lead times, warranty, limitations and answers.',   weight: 5  },
+          ]
+          return (
+            <div className="px-6 pb-6" style={{ background: 'var(--stratagent-panel)' }}>
+              <p className="text-xs mb-4" style={{ color: 'var(--stratagent-muted)' }}>
+                Type what you know directly — no URL needed. Each field scores up to its weight. Even a few sentences per field can push depth past 30.
+              </p>
+              <div className="space-y-4">
+                {FIELDS.map(f => {
+                  const currentScore = kb?.intelligence_depth?.scores?.[f.key] ?? 0
+                  const pct = Math.round((currentScore / f.weight) * 100)
+                  return (
+                    <div key={f.key}>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold" style={{ color: 'var(--stratagent-text)' }}>
+                          {f.label}
+                        </label>
+                        <span className="text-xs" style={{ color: pct >= 50 ? '#10b981' : 'var(--stratagent-muted)' }}>
+                          {currentScore.toFixed(1)} / {f.weight} pts ({pct}%)
+                        </span>
+                      </div>
+                      <textarea
+                        value={quickFillFields[f.key] || ''}
+                        onChange={e => setQuickFillFields(prev => ({ ...prev, [f.key]: e.target.value }))}
+                        placeholder={f.hint}
+                        rows={3}
+                        className="w-full px-3 py-2 rounded-lg text-xs outline-none resize-none"
+                        style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center gap-3 mt-4">
+                <button
+                  onClick={saveQuickFill}
+                  disabled={quickFillLoading}
+                  className="px-5 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40"
+                  style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                  {quickFillLoading ? 'Saving...' : 'Save & Re-score'}
+                </button>
+                {quickFillSaved && (
+                  <span className="text-xs font-semibold" style={{ color: '#10b981' }}>
+                    ✓ Saved — intelligence depth updated
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+      </div>
+
       <div className="mt-4 p-6 rounded-xl"
            style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
         <div className="text-xs uppercase tracking-widest mb-1" style={{ color: 'var(--stratagent-muted)' }}>
@@ -1238,16 +1820,58 @@ export default function KnowledgeBase({ session }: { session: Session }) {
         </label>
         {productImages.length > 0 && (
           <div className="mt-6">
-            <div className="text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--stratagent-muted)' }}>
-              Saved Images ({productImages.length})
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--stratagent-muted)' }}>
+                Saved Images ({productImages.length})
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                  {selectedImageIds.size} selected
+                </span>
+                <button
+                  className="text-xs px-2 py-0.5 rounded"
+                  style={{ color: 'var(--stratagent-gold)', border: '1px solid var(--stratagent-gold-dim)', background: 'transparent' }}
+                  onClick={() => setSelectedImageIds(
+                    selectedImageIds.size === productImages.length
+                      ? new Set()
+                      : new Set(productImages.map((img: any) => img.image_id || img.id).filter(Boolean))
+                  )}>
+                  {selectedImageIds.size === productImages.length ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {productImages.map(img => (
-                <div key={img.image_id || img.id} className="rounded-lg overflow-hidden"
-                     style={{ border: '1px solid var(--stratagent-border)' }}>
+              {productImages.map(img => {
+                const imgId = img.image_id || img.id || ''
+                const isSelected = selectedImageIds.has(imgId)
+                const isAnalysed = visualAnalysisResult?.analyzed_at && isSelected
+                return (
+                <div key={imgId}
+                     className="rounded-lg overflow-hidden relative cursor-pointer"
+                     onClick={() => setSelectedImageIds(prev => {
+                       const next = new Set(prev)
+                       if (next.has(imgId)) { next.delete(imgId) } else { next.add(imgId) }
+                       return next
+                     })}
+                     style={{ border: isSelected ? '2px solid var(--stratagent-gold)' : '1px solid var(--stratagent-border)',
+                              opacity: isSelected ? 1 : 0.45, transition: 'all 0.15s' }}>
                   {img.data && (
-                    <img src={'data:' + img.content_type + ';base64,' + img.data}
-                         alt={img.product_name} className="w-full h-28 object-cover" />
+                    <div className="relative">
+                      <img src={'data:' + img.content_type + ';base64,' + img.data}
+                           alt={img.product_name} className="w-full h-28 object-cover" />
+                      {/* Selection indicator */}
+                      <div className="absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center"
+                           style={{ background: isSelected ? 'var(--stratagent-gold)' : 'rgba(0,0,0,0.5)',
+                                    border: isSelected ? 'none' : '1px solid rgba(255,255,255,0.4)' }}>
+                        {isSelected && <span style={{ color: '#000', fontSize: '0.6rem', fontWeight: 900 }}>✓</span>}
+                      </div>
+                      {isAnalysed && (
+                        <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-xs font-bold"
+                             style={{ background: 'rgba(0,0,0,0.75)', color: '#22c55e', fontSize: '0.6rem' }}>
+                          ✓ ANALYSED
+                        </div>
+                      )}
+                    </div>
                   )}
                   <div className="p-2">
                     <div className="text-xs font-semibold truncate" style={{ color: 'var(--stratagent-text)' }}>
@@ -1261,12 +1885,391 @@ export default function KnowledgeBase({ session }: { session: Session }) {
                     )}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
       </div>
+      {/* Visual Intelligence Panel */}
       <div className="mt-4 p-6 rounded-xl"
+           style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
+        <div className="flex items-start justify-between mb-3 gap-4">
+          <div>
+            <span className="text-xs font-black uppercase tracking-widest"
+                  style={{ color: 'var(--stratagent-gold)' }}>
+              Visual Intelligence
+            </span>
+            <p className="text-xs mt-1" style={{ color: 'var(--stratagent-muted)' }}>
+              Gemini analyses your uploaded product images for quality, competitive positioning, channel fit, and marketing copy.
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            {/* Visual Analysis button — shows cached state */}
+            {productImages.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                {visualAnalysisResult?.cached && (
+                  <span className="text-xs px-2 py-0.5 rounded"
+                        style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+                    ✓ {new Date((visualAnalysisResult.analyzed_at || 0) * 1000).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}
+                  </span>
+                )}
+                <button
+                  onClick={() => runVisualAnalysis(true)}
+                  disabled={visualAnalysisLoading || selectedImageIds.size === 0}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 flex items-center gap-2"
+                  style={{ background: visualAnalysisResult?.cached ? 'var(--stratagent-dark)' : 'var(--stratagent-gold)',
+                           color: visualAnalysisResult?.cached ? 'var(--stratagent-gold)' : '#000',
+                           border: visualAnalysisResult?.cached ? '1px solid var(--stratagent-gold-dim)' : 'none' }}>
+                  {visualAnalysisLoading && (
+                    <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                  )}
+                  {visualAnalysisLoading ? 'Analysing...' : visualAnalysisResult?.cached ? 'Re-analyse' : 'Analyse Images'}
+                </button>
+              </div>
+            )}
+            {/* Export Visual Intelligence .docx */}
+            {visualAnalysisResult?.analysis && (
+              <button
+                onClick={() => exportDocx(
+                  '/output/export-visual-report/' + kb.supplier_id, {},
+                  `STRATAGENT_${kb.company_name}_Visual_Intelligence.docx`
+                )}
+                disabled={exportDocxLoading === '/output/export-visual-report/' + kb.supplier_id}
+                className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 flex items-center gap-2"
+                style={{ background: 'transparent', color: 'var(--stratagent-gold)',
+                         border: '1px solid var(--stratagent-gold-dim)' }}>
+                {exportDocxLoading === '/output/export-visual-report/' + kb.supplier_id
+                  ? 'Exporting...' : 'Export .docx'}
+              </button>
+            )}
+            {/* Market Scan button — shows cached state */}
+            <div className="flex items-center gap-1.5">
+              {productScanResult?.cached && (
+                <span className="text-xs px-2 py-0.5 rounded"
+                      style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+                  ✓ {new Date((productScanResult.scanned_at || 0) * 1000).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}
+                </span>
+              )}
+              <button
+                onClick={() => runProductScan(true)}
+                disabled={productScanLoading}
+                className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 flex items-center gap-2"
+                style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                {productScanLoading && (
+                  <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                )}
+                {productScanLoading ? 'Scanning...' : productScanResult?.cached ? 'Re-scan Market' : 'Market Scan'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {productImages.length === 0 && !productScanResult && (
+          <div className="text-xs py-3 text-center rounded-lg"
+               style={{ background: 'var(--stratagent-dark)', border: '1px dashed var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+            Upload product images above to enable visual analysis — or run a Market Scan to discover channels
+          </div>
+        )}
+
+        {visualAnalysisResult?.analysis && (() => {
+          const a = visualAnalysisResult.analysis
+          const qi = a.quality_indicators || {}
+          const cp = a.competitive_position || {}
+          const ca = a.commercial_appeal || {}
+          const TIER_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+            premium:        { bg: '#1c1400', color: '#f59e0b', label: 'PREMIUM' },
+            above_average:  { bg: '#071a0e', color: '#10b981', label: 'ABOVE AVERAGE' },
+            market_average: { bg: '#0f1623', color: '#94a3b8', label: 'MARKET AVERAGE' },
+            below_average:  { bg: '#1c0d00', color: '#f97316', label: 'BELOW AVERAGE' },
+            commodity:      { bg: '#1a0a0a', color: '#ef4444', label: 'COMMODITY' },
+          }
+          const tier = TIER_STYLES[cp.tier] || TIER_STYLES['market_average']
+          const qualityScores = [
+            { label: 'Print Clarity',    value: qi.print_clarity },
+            { label: 'Color Richness',   value: qi.color_richness },
+            { label: 'Composition',      value: qi.composition_score },
+            { label: 'Production Value', value: qi.production_value },
+            { label: 'Overall Quality',  value: qi.overall_quality },
+          ].filter(s => s.value !== undefined)
+          const appealScores = [
+            { label: 'Gift Potential',    value: ca.gift_potential },
+            { label: 'Wall Art',          value: ca.wall_art_appeal },
+            { label: 'Collector Appeal',  value: ca.collector_appeal },
+            { label: 'Retail Display',    value: ca.retail_display_impact },
+          ].filter(s => s.value !== undefined)
+
+          function ScoreBar({ label, value }: { label: string; value: number }) {
+            const barColor = value >= 80 ? '#10b981' : value >= 60 ? '#f59e0b' : '#ef4444'
+            return (
+              <div className="flex items-center gap-3">
+                <span className="text-xs w-32 shrink-0" style={{ color: 'var(--stratagent-muted)' }}>{label}</span>
+                <div className="flex-1 h-1.5 rounded-full" style={{ background: '#1e293b' }}>
+                  <div className="h-full rounded-full" style={{ width: `${value}%`, background: barColor }} />
+                </div>
+                <span className="text-xs w-7 text-right font-semibold" style={{ color: barColor }}>{value}</span>
+              </div>
+            )
+          }
+
+          return (
+            <div className="space-y-5 mt-1">
+              {/* Tier badge */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-black px-3 py-1.5 rounded-full uppercase tracking-widest"
+                      style={{ background: tier.bg, color: tier.color, border: `1px solid ${tier.color}55` }}>
+                  {tier.label}
+                </span>
+                <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                  Competitive Position · {visualAnalysisResult.images_used} image{visualAnalysisResult.images_used !== 1 ? 's' : ''} analysed
+                </span>
+              </div>
+
+              {/* Quality scores */}
+              {qualityScores.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--stratagent-muted)' }}>
+                    Quality Indicators
+                  </div>
+                  <div className="space-y-2">
+                    {qualityScores.map(s => <ScoreBar key={s.label} label={s.label} value={s.value} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* Marketing description */}
+              {a.marketing_description && (
+                <div className="p-4 rounded-lg"
+                     style={{ background: 'var(--stratagent-dark)', borderLeft: '3px solid var(--stratagent-gold)' }}>
+                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--stratagent-gold)' }}>
+                    Marketing Description
+                  </div>
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--stratagent-text)' }}>
+                    {a.marketing_description}
+                  </p>
+                </div>
+              )}
+
+              {/* Verdict */}
+              {a.quality_verdict && (
+                <p className="text-xs italic" style={{ color: '#94a3b8' }}>{a.quality_verdict}</p>
+              )}
+
+              {/* Differentiators & Weaknesses */}
+              {(cp.differentiators?.length > 0 || cp.weaknesses?.length > 0) && (
+                <div className="grid grid-cols-2 gap-4">
+                  {cp.differentiators?.length > 0 && (
+                    <div>
+                      <div className="text-xs uppercase tracking-widest mb-2" style={{ color: '#10b981' }}>Strengths</div>
+                      <ul className="space-y-1">
+                        {cp.differentiators.map((d: string, i: number) => (
+                          <li key={i} className="text-xs flex items-start gap-1.5" style={{ color: 'var(--stratagent-text)' }}>
+                            <span style={{ color: '#10b981' }}>+</span>{d}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {cp.weaknesses?.length > 0 && (
+                    <div>
+                      <div className="text-xs uppercase tracking-widest mb-2" style={{ color: '#f97316' }}>Watch Points</div>
+                      <ul className="space-y-1">
+                        {cp.weaknesses.map((w: string, i: number) => (
+                          <li key={i} className="text-xs flex items-start gap-1.5" style={{ color: 'var(--stratagent-text)' }}>
+                            <span style={{ color: '#f97316' }}>!</span>{w}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Commercial Appeal */}
+              {appealScores.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--stratagent-muted)' }}>
+                    Commercial Appeal
+                  </div>
+                  <div className="space-y-2">
+                    {appealScores.map(s => <ScoreBar key={s.label} label={s.label} value={s.value} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* Recommended Positioning */}
+              {a.recommended_positioning && (
+                <div className="text-xs p-3 rounded-lg"
+                     style={{ background: '#0c1a2e', border: '1px solid #0ea5e933', color: '#7dd3fc' }}>
+                  <span className="font-semibold uppercase tracking-wider">Recommended Position: </span>
+                  {a.recommended_positioning}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* Product Market Scan Results — field names match run_product_scan() return shape */}
+        {productScanResult && (
+          <div className="space-y-4 mt-4 pt-4"
+               style={{ borderTop: visualAnalysisResult?.analysis ? '1px solid var(--stratagent-border)' : 'none' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--stratagent-muted)' }}>
+                Market Scan — {productScanResult.supplier}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2 py-0.5 rounded"
+                      style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-gold)', border: '1px solid var(--stratagent-border)' }}>
+                  {productScanResult.signals_found || 0} signals · {productScanResult.signals_stored || 0} saved
+                </span>
+                <button
+                  onClick={() => exportDocx(
+                    '/output/export-market-scan/' + kb.supplier_id,
+                    { scan: productScanResult },
+                    `STRATAGENT_${kb.company_name}_Market_Scan.docx`
+                  )}
+                  disabled={exportDocxLoading === '/output/export-market-scan/' + kb.supplier_id}
+                  className="px-3 py-1 rounded text-xs font-semibold disabled:opacity-40"
+                  style={{ background: 'transparent', color: 'var(--stratagent-gold)', border: '1px solid var(--stratagent-gold-dim)' }}>
+                  {exportDocxLoading === '/output/export-market-scan/' + kb.supplier_id ? 'Exporting...' : 'Export .docx'}
+                </button>
+              </div>
+            </div>
+
+            {/* Saturation bars by channel */}
+            {productScanResult.saturation_by_channel && Object.keys(productScanResult.saturation_by_channel).length > 0 && (
+              <div>
+                <div className="text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--stratagent-muted)' }}>
+                  Channel Saturation
+                </div>
+                <div className="space-y-2">
+                  {Object.entries(productScanResult.saturation_by_channel as Record<string, number>)
+                    .sort(([,a],[,b]) => a - b)
+                    .map(([ch, score]) => {
+                      const barColor = score >= 70 ? '#ef4444' : score >= 50 ? '#f59e0b' : '#10b981'
+                      const label = score >= 70 ? 'Crowded' : score >= 50 ? 'Moderate' : 'Open'
+                      return (
+                        <div key={ch} className="flex items-center gap-3">
+                          <span className="text-xs w-28 shrink-0" style={{ color: 'var(--stratagent-text)' }}>{ch}</span>
+                          <div className="flex-1 h-1.5 rounded-full" style={{ background: '#1e293b' }}>
+                            <div className="h-full rounded-full" style={{ width: `${score}%`, background: barColor }} />
+                          </div>
+                          <span className="text-xs w-16 text-right" style={{ color: barColor }}>{label} {score}</span>
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* Open channels highlight */}
+            {productScanResult.open_channels?.length > 0 && (
+              <div className="p-3 rounded-lg"
+                   style={{ background: '#071a0e', border: '1px solid #166534' }}>
+                <span className="text-xs font-semibold" style={{ color: '#4ade80' }}>
+                  Best opportunities: {productScanResult.open_channels.join(' · ')}
+                </span>
+              </div>
+            )}
+
+            {/* Top signals */}
+            {productScanResult.top_signals?.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--stratagent-muted)' }}>
+                  Top Signals
+                </div>
+                {productScanResult.top_signals.slice(0, 5).map((sig: any, i: number) => (
+                  <div key={i} className="p-3 rounded-lg"
+                       style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded"
+                            style={{ background: 'var(--stratagent-gold)22', color: 'var(--stratagent-gold)' }}>
+                        {sig.signal_type}
+                      </span>
+                      {sig.channel && (
+                        <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>{sig.channel}</span>
+                      )}
+                      {sig.relevance_score !== undefined && (
+                        <span className="text-xs ml-auto" style={{ color: '#64748b' }}>
+                          rel: {sig.relevance_score}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--stratagent-text)' }}>{sig.headline}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {productScanResult.error && (
+              <div className="text-xs p-3 rounded-lg"
+                   style={{ background: '#1a0a0a', border: '1px solid #ef444433', color: '#f87171' }}>
+                {productScanResult.error}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Generate Channel Brief — available once we have scan or visual data */}
+        {(visualAnalysisResult?.analysis || productScanResult) && (
+          <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--stratagent-border)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="text-xs font-black uppercase tracking-widest"
+                      style={{ color: '#0ea5e9' }}>
+                  Channel Strategy Brief
+                </span>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--stratagent-muted)' }}>
+                  Gemini synthesises the quality data and scan into a concrete launch plan.
+                </p>
+              </div>
+              <button
+                onClick={runChannelBrief}
+                disabled={channelBriefLoading}
+                className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 flex items-center gap-2 shrink-0"
+                style={{ background: '#0c1a2e', border: '1px solid #0ea5e9', color: '#7dd3fc' }}>
+                {channelBriefLoading && (
+                  <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                )}
+                {channelBriefLoading ? 'Generating...' : 'Generate Brief'}
+              </button>
+            </div>
+
+            {channelBriefResult?.brief && (
+              <div>
+                <div className="mt-3 p-4 rounded-lg text-sm leading-relaxed whitespace-pre-wrap"
+                     style={{ background: 'var(--stratagent-dark)', border: '1px solid #0ea5e933', color: 'var(--stratagent-text)', fontFamily: 'inherit' }}>
+                  {channelBriefResult.brief}
+                </div>
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => exportDocx(
+                      '/output/export-channel-brief/' + kb.supplier_id,
+                      { brief: channelBriefResult.brief, channel_name: channelBriefResult.channel_name || '' },
+                      `STRATAGENT_${kb.company_name}_Channel_Brief.docx`
+                    )}
+                    disabled={exportDocxLoading === '/output/export-channel-brief/' + kb.supplier_id}
+                    className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 flex items-center gap-2"
+                    style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+                    {exportDocxLoading === '/output/export-channel-brief/' + kb.supplier_id ? 'Exporting...' : 'Export .docx'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+            <div className="mt-4 p-6 rounded-xl"
            style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase tracking-widest" style={{ color: 'var(--stratagent-muted)' }}>
@@ -1431,7 +2434,7 @@ export default function KnowledgeBase({ session }: { session: Session }) {
                 <textarea
                   value={interviewAnswers[i] || ''}
                   onChange={e => setInterviewAnswers(prev => ({ ...prev, [i]: e.target.value }))}
-                  placeholder="Your answer — skip if you don't know"
+                  placeholder="Your answer -- skip if you don't know"
                   rows={2}
                   className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none"
                   style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }}
@@ -1439,17 +2442,16 @@ export default function KnowledgeBase({ session }: { session: Session }) {
               </div>
             ))}
 
-            {interviewQuestions.length > 0 && (
-              <button onClick={submitInterviewAnswers} disabled={interviewSubmitting || !Object.values(interviewAnswers).some(a => a?.trim())}
-                      className="w-full py-3 rounded-lg text-sm font-semibold disabled:opacity-40"
-                      style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
-                {interviewSubmitting ? 'Saving answers...' : 'Save Answers'}
-              </button>
-            )}
+            <button
+              onClick={submitInterviewAnswers}
+              disabled={interviewLoading || Object.keys(interviewAnswers).length === 0}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40"
+              style={{ background: 'var(--stratagent-gold)', color: '#000' }}>
+              Submit Answers
+            </button>
           </div>
         )}
 
-        {/* Notes Log */}
         {fieldNotes.length > 0 && !interviewMode && (
           <div className="mt-5 space-y-2">
             <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--stratagent-muted)' }}>

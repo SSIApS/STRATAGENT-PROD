@@ -9,6 +9,7 @@ const NAV = [
   { to: '/active-watch', label: 'ACTIVE WATCH' },
   { to: '/stratalink', label: 'STRATALINK' },
   { to: '/strategist', label: 'STRATEGIST' },
+  { to: '/product-analysis', label: 'PRODUCTS' },
 ]
 
 export default function Layout({
@@ -65,8 +66,8 @@ export default function Layout({
       {/* Footer */}
       <footer className="px-6 py-4 text-xs border-t text-center"
               style={{ borderColor: 'var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
-        Jason L. Smith · Strategic Sales International ApS · info@strategic.dk · CVR: 41945621 · Roskilde, Denmark
-        &nbsp;·&nbsp; STRATAGENT — The Intelligence Behind Agentic Sales.
+        Jason L. Smith &middot; Strategic Sales International ApS &middot; info@strategic.dk &middot; CVR: 41945621 &middot; Roskilde, Denmark
+        &nbsp;&middot;&nbsp; STRATAGENT &mdash; The Intelligence Behind Agentic Sales.
       </footer>
     </div>
   )

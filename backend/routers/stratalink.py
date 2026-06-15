@@ -145,6 +145,16 @@ async def get_research_run(run_id: str):
     return run
 
 
+@router.delete("/research-runs/{run_id}")
+async def delete_research_run(run_id: str):
+    """Delete a saved research run."""
+    run = db.get_affiliate_research_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Research run not found")
+    db.delete_affiliate_research_run(run_id)
+    return {"deleted": run_id}
+
+
 class ProgramSelectionUpdate(BaseModel):
     selection_status: str   # selected | dismissed | new
     notes: Optional[str] = None

@@ -203,6 +203,23 @@ export default function StratALink({ session }: { session: Session }) {
     finally { setLoading(false) }
   }
 
+  async function deletePartner(partnerId: string) {
+    if (!confirm('Remove this partner from the library?')) return
+    try {
+      await api.delete(`/stratalink/partners/${partnerId}`)
+      setPartners(prev => prev.filter(p => (p.partner_id || p.id) !== partnerId))
+    } catch (e: any) { alert(e.response?.data?.detail || 'Delete failed') }
+  }
+
+  async function deleteResearchRun(runId: string) {
+    if (!confirm('Delete this saved search?')) return
+    try {
+      await api.delete(`/stratalink/research-runs/${runId}`)
+      setResearchHistory(prev => prev.filter(r => r.run_id !== runId))
+      if (researchRunId === runId) { setResearchResults([]); setResearchRunId(null) }
+    } catch (e: any) { alert(e.response?.data?.detail || 'Delete failed') }
+  }
+
   async function markConverted(referralId: string) {
     const amount = prompt('Commission earned (EUR amount, e.g. 45.00):')
     if (amount === null) return
@@ -224,9 +241,16 @@ export default function StratALink({ session }: { session: Session }) {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* ── Module identity ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-5">
+        <div style={{ width: 3, height: 18, borderRadius: 2, background: '#4ade80', flexShrink: 0 }} />
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#4ade80' }}>
+          STRATALINK
+        </span>
+      </div>
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h2 className="text-2xl font-black" style={{ color: 'var(--stratagent-text)' }}>STRATALINK</h2>
+          <h2 className="text-2xl font-black" style={{ color: '#4ade80' }}>STRATALINK</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--stratagent-muted)' }}>
             Affiliate intelligence &amp; revenue development — your in-house product expert for the affiliate division.
           </p>
@@ -277,7 +301,6 @@ export default function StratALink({ session }: { session: Session }) {
               <div className="grid gap-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 {[
                   ['Partner Name *', 'partner_name', 'e.g. Guesty'],
-                  ['Category', 'category', 'e.g. property_management'],
                   ['Commission Rate *', 'commission_rate', 'e.g. 20% recurring or $50/signup'],
                   ['Affiliate Network', 'affiliate_network', 'direct | Impact | CJ | PartnerStack'],
                   ['Referral / Signup URL', 'referral_url', 'https://...'],
@@ -291,6 +314,17 @@ export default function StratALink({ session }: { session: Session }) {
                            style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }} />
                   </div>
                 ))}
+                <div>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--stratagent-muted)' }}>Category</label>
+                  <select value={newPartner.category} onChange={e => setNewPartner((p: any) => ({...p, category: e.target.value}))}
+                          className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+                          style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-text)' }}>
+                    <option value="">Select category...</option>
+                    {categories.map((c: any) => (
+                      <option key={c.key} value={c.key}>{c.key.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               {[
                 ['What they sell', 'product_description', 'Plain English product description'],
@@ -393,15 +427,23 @@ export default function StratALink({ session }: { session: Session }) {
                           </a>
                         )}
                       </div>
-                      <button onClick={() => {
-                                setNewReferral((r: any) => ({...r, partner_id: p.partner_id || p.id, partner_name: p.partner_name}))
-                                setShowReferralForm(true)
-                                setActiveTab('revenue')
-                              }}
-                              className="text-xs px-3 py-1.5 rounded-lg flex-shrink-0"
-                              style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
-                        Log Referral
-                      </button>
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        <button onClick={() => {
+                                  setNewReferral((r: any) => ({...r, partner_id: p.partner_id || p.id, partner_name: p.partner_name}))
+                                  setShowReferralForm(true)
+                                  setActiveTab('revenue')
+                                }}
+                                className="text-xs px-3 py-1.5 rounded-lg"
+                                style={{ border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
+                          Log Referral
+                        </button>
+                        <button onClick={() => deletePartner(p.partner_id || p.id)}
+                                className="text-xs px-2 py-1.5 rounded-lg"
+                                title="Remove partner"
+                                style={{ border: '1px solid var(--stratagent-border)', color: '#ef4444' }}>
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -519,9 +561,17 @@ export default function StratALink({ session }: { session: Session }) {
                       <div className="text-sm font-semibold" style={{ color: 'var(--stratagent-text)' }}>
                         {run.category} <span style={{ color: 'var(--stratagent-muted)', fontWeight: 400 }}>· {run.geography} · {run.count} programs</span>
                       </div>
-                      <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
-                        {run.created_at ? new Date(run.created_at * 1000).toLocaleString() : ''}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ color: 'var(--stratagent-muted)' }}>
+                          {run.created_at ? new Date(run.created_at * 1000).toLocaleString() : ''}
+                        </span>
+                        <button onClick={() => deleteResearchRun(run.run_id)}
+                                className="text-xs px-2 py-0.5 rounded"
+                                title="Delete this saved search"
+                                style={{ border: '1px solid var(--stratagent-border)', color: '#ef4444' }}>
+                          ✕
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       {(run.programs || []).map((p: any) => (

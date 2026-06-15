@@ -18,6 +18,25 @@ import re
 from services.gemini import generate
 
 
+def _nace_match_level(prospect_nace: str, target_nace_list: list) -> str:
+    """Return EXACT, DIVISION, SECTION, or NONE based on NACE code overlap."""
+    if not prospect_nace or not target_nace_list:
+        return "UNKNOWN"
+    p = prospect_nace.upper()
+    p_div = p[:3] if len(p) >= 3 else p
+    p_sec = p[:1]
+    targets = [c.upper() for c in target_nace_list if c]
+    if p in targets:
+        return "EXACT"
+    for t in targets:
+        if t[:3] == p_div:
+            return "DIVISION"
+    for t in targets:
+        if t[:1] == p_sec:
+            return "SECTION"
+    return "NONE"
+
+
 def _seed_summary(kb: dict) -> str:
     """Build a compact supplier identity string for scoring."""
     iseed = kb.get("intelligence_seed") or {}
@@ -33,6 +52,8 @@ def _seed_summary(kb: dict) -> str:
     triggers = sv("signal_recognition", "trigger_events")
     keywords = sv("signal_recognition", "tender_keywords")
     win_when = sv("winning_conditions", "we_win_when")
+    targeting = (iseed.get("industry_targeting") or {})
+    target_nace = targeting.get("target_nace") or []
 
     parts = []
     if product:
@@ -43,6 +64,8 @@ def _seed_summary(kb: dict) -> str:
         parts.append(f"Buyer: {buyer}")
     if use_case:
         parts.append(f"Use case: {use_case}")
+    if target_nace:
+        parts.append(f"Target industries (NACE): {', '.join(target_nace)}")
     if triggers:
         parts.append(f"Trigger events: {triggers}")
     if keywords:
@@ -113,13 +136,23 @@ async def cross_score_prospect(
         s.get("signal", "") for s in signals_raw if s.get("signal")
     ) if signals_raw else "None found"
 
+    # Prospect industry code (if classified)
+    prospect_nace = (prospect_profile.get("industry_classification") or {}).get("nace_code", "")
+    prospect_nace_label = (prospect_profile.get("industry_classification") or {}).get("nace_label", "")
+
     # Build supplier summaries block
     supplier_blocks = []
     for kb in candidates:
         sid = kb.get("id", "")
         name = kb.get("company_name", sid)
         summary = _seed_summary(kb)
-        supplier_blocks.append(f"SUPPLIER_ID: {sid}\nNAME: {name}\n{summary}")
+        # Industry match level -- gives Gemini a concrete structural signal
+        target_nace = ((kb.get("intelligence_seed") or {}).get("industry_targeting") or {}).get("target_nace") or []
+        match_level = _nace_match_level(prospect_nace, target_nace) if prospect_nace else "UNKNOWN"
+        industry_line = f"Industry match vs prospect: {match_level}"
+        if prospect_nace:
+            industry_line += f" (prospect NACE {prospect_nace} -- {prospect_nace_label})"
+        supplier_blocks.append(f"SUPPLIER_ID: {sid}\nNAME: {name}\n{industry_line}\n{summary}")
 
     suppliers_text = "\n\n---\n\n".join(supplier_blocks)
 

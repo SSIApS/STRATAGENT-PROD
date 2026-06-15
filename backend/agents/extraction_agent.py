@@ -32,6 +32,7 @@ Search the web thoroughly. Return a JSON object with these exact keys:
   "reference_projects": "specific named projects or installations if findable",
   "objections_responses": "common objections in this product category",
   "buyer_profiles": "who buys this, why, what triggers a purchase",
+  "supplier_location": "city, state/province, country where the company is headquartered or primarily operates -- use verified address or About/Contact page data",
   "confidence_notes": "what you found vs what you inferred -- be specific"
 }}
 

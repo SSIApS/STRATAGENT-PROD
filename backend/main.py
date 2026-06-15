@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from routers import (
     knowledge_base, field_intelligence, active_watch, output_engine,
     folder_sync, stratalyst, stratascout, stratalink, strategist,
-    supplier_reports, stratagora
+    supplier_reports, stratagora, product_registry
 )
 from services.demo_gate import verify_password, create_session_id
 
@@ -29,17 +29,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(stratagora.router,        prefix="/api/stratagora",         tags=["STRATAGORA"])
-app.include_router(knowledge_base.router,    prefix="/api/knowledge-base",    tags=["Knowledge Base"])
-app.include_router(field_intelligence.router, prefix="/api/field-intelligence", tags=["Field Intelligence"])
-app.include_router(active_watch.router,      prefix="/api/active-watch",       tags=["Active Watch"])
-app.include_router(output_engine.router,     prefix="/api/output",             tags=["Output Engine"])
-app.include_router(folder_sync.router,       prefix="/api/folder-sync",        tags=["Folder Sync"])
-app.include_router(stratalyst.router,        prefix="/api/stratalyst",         tags=["STRATALYST"])
-app.include_router(stratascout.router,       prefix="/api/stratascout",        tags=["STRATASCOUT"])
-app.include_router(stratalink.router,        prefix="/api/stratalink",         tags=["STRATALINK"])
-app.include_router(strategist.router,        prefix="/api/strategist",         tags=["STRATEGIST"])
-app.include_router(supplier_reports.router,  prefix="/api/supplier-reports",   tags=["Supplier Reports"])
+app.include_router(stratagora.router,         prefix="/api/stratagora",          tags=["STRATAGORA"])
+app.include_router(knowledge_base.router,     prefix="/api/knowledge-base",      tags=["Knowledge Base"])
+app.include_router(field_intelligence.router, prefix="/api/field-intelligence",  tags=["Field Intelligence"])
+app.include_router(active_watch.router,       prefix="/api/active-watch",        tags=["Active Watch"])
+app.include_router(output_engine.router,      prefix="/api/output",              tags=["Output Engine"])
+app.include_router(folder_sync.router,        prefix="/api/folder-sync",         tags=["Folder Sync"])
+app.include_router(stratalyst.router,         prefix="/api/stratalyst",          tags=["STRATALYST"])
+app.include_router(stratascout.router,        prefix="/api/stratascout",         tags=["STRATASCOUT"])
+app.include_router(stratalink.router,         prefix="/api/stratalink",          tags=["STRATALINK"])
+app.include_router(strategist.router,         prefix="/api/strategist",          tags=["STRATEGIST"])
+app.include_router(supplier_reports.router,   prefix="/api/supplier-reports",    tags=["Supplier Reports"])
+app.include_router(product_registry.router,   tags=["Product Registry"])
 
 
 @app.get("/debug/routes")

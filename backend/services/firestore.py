@@ -14,6 +14,7 @@ COLLECTIONS:
 """
 from google.cloud import firestore
 from typing import Optional
+from datetime import datetime, timezone
 import time
 import json
 
@@ -68,6 +69,10 @@ def list_relationship_profiles(supplier_id: str) -> list:
         .stream()
     )
     return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
+def delete_relationship_profile(profile_id: str) -> None:
+    db.collection("relationship_profiles").document(profile_id).delete()
 
 
 # -- PENDING RESEARCH QUEUE (failed/queued FI runs, saved for retry) --
@@ -176,6 +181,20 @@ def list_all_monitored_positions(include_dismissed: bool = False) -> list:
 
 
 # -- PRODUCT IMAGES --
+
+def save_kb_analysis(supplier_id: str, analysis_type: str, result: dict) -> None:
+    """
+    Persist a completed analysis result back to the KB document.
+    analysis_type: 'visual_analysis' or 'last_scan'
+    Stores result + timestamp so future requests can return cached data.
+    """
+    import time as _time
+    ref = db.collection("knowledge_bases").document(supplier_id)
+    ref.update({
+        analysis_type: result,
+        analysis_type + "_at": _time.time(),
+    })
+
 
 def save_product_image(image_id: str, data: dict) -> str:
     ref = db.collection("product_images").document(image_id)
@@ -519,3 +538,202 @@ def get_storage_stats() -> list:
 
     results.sort(key=lambda x: -x["total_bytes"])
     return results
+
+
+# ---------------------------------------------------------------------------
+# PRODUCT REGISTRY
+# ---------------------------------------------------------------------------
+
+VALID_ARCHETYPES = {
+    "consumer_art_novelty",
+    "consumer_design_product",
+    "b2b_training_professional",
+    "b2b_industrial_supply",
+}
+
+ARCHETYPE_ROUTER = {
+    # keyword -> archetype
+    "poster": "consumer_art_novelty",
+    "art print": "consumer_art_novelty",
+    "wall art": "consumer_art_novelty",
+    "collectible": "consumer_art_novelty",
+    "novelty": "consumer_art_novelty",
+    "fandom": "consumer_art_novelty",
+    "pop culture": "consumer_art_novelty",
+    "print on demand": "consumer_art_novelty",
+    "greeting card art": "consumer_art_novelty",
+    "design product": "consumer_design_product",
+    "lifestyle": "consumer_design_product",
+    "sustainable": "consumer_design_product",
+    "bathroom": "consumer_design_product",
+    "home accessory": "consumer_design_product",
+    "eco": "consumer_design_product",
+    "wearable": "consumer_design_product",
+    "charger guard": "consumer_design_product",
+    "training tool": "b2b_training_professional",
+    "card deck": "b2b_training_professional",
+    "certification": "b2b_training_professional",
+    "p&id": "b2b_training_professional",
+    "hse": "b2b_training_professional",
+    "professional development": "b2b_training_professional",
+    "industrial training": "b2b_training_professional",
+    "technical reference": "b2b_training_professional",
+    "component": "b2b_industrial_supply",
+    "material": "b2b_industrial_supply",
+    "manufacturer": "b2b_industrial_supply",
+    "supplier": "b2b_industrial_supply",
+    "industrial": "b2b_industrial_supply",
+}
+
+
+def route_to_archetype(keywords: list) -> Optional[str]:
+    """
+    Given a list of keyword strings, return the best-matching archetype.
+    Matches multi-word tokens against the FULL joined text (not word-by-word).
+    Returns None when no token matches -- caller should fall back to Gemini.
+    """
+    # Join all keywords into one searchable string so multi-word tokens match
+    full_text = " ".join(str(kw).lower() for kw in keywords)
+    scores = {a: 0 for a in VALID_ARCHETYPES}
+    for token, archetype in ARCHETYPE_ROUTER.items():
+        if token in full_text:
+            scores[archetype] += 1
+    best = max(scores, key=lambda a: scores[a])
+    return best if scores[best] > 0 else None
+
+
+def save_product_registry(product_id: str, data: dict) -> str:
+    ref = db.collection("product_registry").document(product_id)
+    ref.set({**data, "updated_at": time.time()}, merge=True)
+    return product_id
+
+
+def get_product_registry(product_id: str) -> Optional[dict]:
+    doc = db.collection("product_registry").document(product_id).get()
+    return doc.to_dict() if doc.exists else None
+
+
+def list_product_registry() -> list:
+    docs = db.collection("product_registry").stream()
+    return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
+def delete_product_registry(product_id: str) -> None:
+    db.collection("product_registry").document(product_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# ANALYSIS VAULT
+# ---------------------------------------------------------------------------
+
+VALID_TRIGGER_REASONS = {
+    "MARKET_SHIFT",
+    "NEW_COMPETITOR",
+    "PLATFORM_CHANGE",
+    "REGULATORY_CHANGE",
+    "CLIENT_REQUEST",
+    "PERIODIC_REFRESH",
+    "PRODUCT_CHANGE",
+    "INITIAL_SCAN",
+}
+
+
+def save_vault_entry(product_id: str, analysis: dict, trigger_reason: str, triggered_by: str = "manual") -> dict:
+    """
+    Store a new versioned analysis result for a product.
+    Increments version number automatically. Locks the previous version.
+    Returns the new vault entry.
+    """
+    if trigger_reason not in VALID_TRIGGER_REASONS:
+        raise ValueError(f"Invalid trigger reason: {trigger_reason}. Must be one of {VALID_TRIGGER_REASONS}")
+
+    # Get current highest version -- filter in Firestore, sort in Python (no composite index needed)
+    existing_stream = (
+        db.collection("analysis_vault")
+        .where("product_id", "==", product_id)
+        .stream()
+    )
+    existing_list = list(existing_stream)
+    existing_list.sort(key=lambda d: d.to_dict().get("version", 0), reverse=True)
+    new_version = (existing_list[0].to_dict().get("version", 0) + 1) if existing_list else 1
+
+    entry_id = f"{product_id}-v{new_version}"
+    entry = {
+        "product_id": product_id,
+        "version": new_version,
+        "is_current": True,
+        "locked_date": datetime.now(timezone.utc).isoformat(),
+        "trigger_reason": trigger_reason,
+        "triggered_by": triggered_by,
+        "analysis": analysis,
+        "brief_generated": False,
+        "brief_ref": None,
+        "created_at": time.time(),
+    }
+
+    # Mark previous current as no longer current
+    for doc in existing_list:
+        doc.reference.update({"is_current": False})
+
+    db.collection("analysis_vault").document(entry_id).set(entry)
+    return {"id": entry_id, **entry}
+
+
+def get_current_vault_entry(product_id: str) -> Optional[dict]:
+    """Return the current (latest locked) analysis for a product.
+    Filter in Firestore, sort in Python -- avoids composite index requirement.
+    """
+    docs = (
+        db.collection("analysis_vault")
+        .where("product_id", "==", product_id)
+        .stream()
+    )
+    entries = [{"id": d.id, **d.to_dict()} for d in docs]
+    if not entries:
+        return None
+    entries.sort(key=lambda e: e.get("version", 0), reverse=True)
+    return entries[0]
+
+
+def get_vault_history(product_id: str) -> list:
+    """Return all versions of analysis for a product, newest first.
+    Filter in Firestore, sort in Python -- avoids composite index requirement.
+    """
+    docs = (
+        db.collection("analysis_vault")
+        .where("product_id", "==", product_id)
+        .stream()
+    )
+    entries = [{"id": d.id, **d.to_dict()} for d in docs]
+    entries.sort(key=lambda e: e.get("version", 0), reverse=True)
+    return entries
+
+
+def mark_brief_generated(vault_entry_id: str, brief_ref: str) -> None:
+    """Mark a vault entry as having a brief generated, with reference."""
+    db.collection("analysis_vault").document(vault_entry_id).update({
+        "brief_generated": True,
+        "brief_ref": brief_ref,
+    })
+
+
+def list_all_vault_current() -> list:
+    """Return current vault entry for every product (for dashboard view)."""
+    docs = (
+        db.collection("analysis_vault")
+        .where("is_current", "==", True)
+        .stream()
+    )
+    return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
+def get_product_registry_images(product_id: str) -> list:
+    """Return all images tagged to a PAM product_id."""
+    docs = (
+        db.collection("product_images")
+        .where("product_id", "==", product_id)
+        .stream()
+    )
+    images = [{"id": d.id, **d.to_dict()} for d in docs]
+    images.sort(key=lambda img: img.get("uploaded_at", 0), reverse=True)
+    return images

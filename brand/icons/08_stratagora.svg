@@ -1,0 +1,15 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" rx="24" fill="#0f1117"/>
+  <!-- Brain: two overlapping ellipses = hemispheres -->
+  <ellipse cx="84" cy="88" rx="34" ry="44" stroke="#a78bfa" stroke-width="5" fill="none"/>
+  <ellipse cx="116" cy="88" rx="34" ry="44" stroke="#a78bfa" stroke-width="5" fill="none"/>
+  <!-- Center divider -->
+  <line x1="100" y1="44" x2="100" y2="132" stroke="#a78bfa" stroke-width="2.5" opacity="0.22"/>
+  <!-- Fold arc - left hemisphere -->
+  <path d="M66 72 C56 82 56 98 66 106" stroke="#a78bfa" stroke-width="3" fill="none" opacity="0.55" stroke-linecap="round"/>
+  <!-- Fold arc - right hemisphere -->
+  <path d="M134 72 C144 82 144 98 134 106" stroke="#a78bfa" stroke-width="3" fill="none" opacity="0.55" stroke-linecap="round"/>
+  <!-- ECG / pulse line below -->
+  <path d="M62 150 L80 150 L92 166 L100 132 L112 150 L138 150" stroke="#a78bfa" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="100" y="193" font-family="system-ui,sans-serif" font-size="11" font-weight="700" letter-spacing="2" fill="#a78bfa" text-anchor="middle" opacity="0.5">STRATAGORA</text>
+</svg>

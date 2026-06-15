@@ -245,6 +245,13 @@ export default function ActiveWatch({ session }: { session: Session }) {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* ── Module identity ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-5">
+        <div style={{ width: 3, height: 18, borderRadius: 2, background: '#fb923c', flexShrink: 0 }} />
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#fb923c' }}>
+          ACTIVE WATCH
+        </span>
+      </div>
       {/* STRATADAR Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -259,7 +266,7 @@ export default function ActiveWatch({ session }: { session: Session }) {
               Active Watch Monitor
             </span>
           </div>
-          <h2 className="text-2xl font-black" style={{ color: 'var(--stratagent-text)' }}>
+          <h2 className="text-2xl font-black" style={{ color: '#fb923c' }}>
             Active Watch
           </h2>
           <p className="text-sm mt-1" style={{ color: 'var(--stratagent-muted)' }}>

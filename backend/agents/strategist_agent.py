@@ -107,7 +107,7 @@ CRITICAL RULES FOR THIS BRIEF:
 - Every recommendation must name a specific company, cite its CI, and reference a real signal or KB gap.
 - "Week headline" must be a single punchy sentence that names the single most important thing to do THIS week.
 - top_calls must be prospects Jason can actually call THIS week - cite WHY NOW with a specific signal or trigger.
-- top_3_actions must be concrete tasks (e.g. "Run STRATALYST deep scan on Becker Insulation to push depth from 58 to 70+") not generic advice.
+- top_3_actions must be concrete tasks (e.g. "Run STRATALYST deep scan on Becker Insulation to push depth from 58 to 70+") not generic advice. Always set supplier_name and company_name when the action targets a specific entity.
 - pipeline_score must reflect REALITY: if no prospects are above CI 75, score cannot exceed 60. If KBs are weak, penalise.
 - If STRATAGORA market signals are present, the single most actionable one MUST appear in top_3_actions.
 - If STRATAGORA is empty, Action 3 should be "Run STRATAGORA market scan to identify sector signals".
@@ -152,8 +152,10 @@ Produce a JSON object with this exact structure:
       "priority": 1,
       "action": "Imperative verb + specific task",
       "why": "Why this is the highest leverage action right now",
-      "module": "KB|FI|WATCH|OUTPUT|SCOUT|STRATALINK",
-      "effort": "15min|30min|1hr|2hr+"
+      "module": "KB|FI|WATCH|OUTPUT|SCOUT|STRATALINK|STRATALYST",
+      "effort": "15min|30min|1hr|2hr+",
+      "supplier_name": "exact supplier company name this action applies to, or null if not supplier-specific",
+      "company_name": "exact prospect company name this action applies to (for FI actions), or null"
     }}
   ],
   "what_changed": [

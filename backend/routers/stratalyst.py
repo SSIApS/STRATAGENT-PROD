@@ -23,6 +23,7 @@ from agents.stratalyst_agent import (
     generate_interview_questions, synthesise_profile, build_intelligence_seed,
 )
 from agents.extraction_agent import score_intelligence_depth
+from services.gemini import generate
 
 
 def _threshold_label(total: float) -> str:
@@ -471,6 +472,11 @@ async def build_seed(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Seed build failed: {str(e)}")
 
+    # Preserve industry_targeting -- NACE codes are set manually and must survive rebuilds
+    existing_seed = kb.get("intelligence_seed") or {}
+    if existing_seed.get("industry_targeting"):
+        seed["industry_targeting"] = existing_seed["industry_targeting"]
+
     db.save_knowledge_base(supplier_id, {"intelligence_seed": seed})
 
     completeness = seed.get("_meta", {}).get("completeness_pct", 0)
@@ -592,3 +598,216 @@ async def recommend_seed_field(
         "field_name": payload.field_name,
         "suggested_by": payload.suggested_by,
     }
+
+
+class IndustryTargetingRequest(BaseModel):
+    target_nace: List[str] = []
+    target_sic: List[str] = []
+    notes: Optional[str] = ""
+
+
+@router.post("/{supplier_id}/update-industry-targeting")
+async def update_industry_targeting(supplier_id: str, payload: IndustryTargetingRequest):
+    """Save NACE and SIC target code lists to the supplier's intelligence seed."""
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+
+    seed = kb.get("intelligence_seed") or {}
+    seed["industry_targeting"] = {
+        "target_nace": [c.upper().strip() for c in payload.target_nace if c.strip()],
+        "target_sic":  [c.strip() for c in payload.target_sic if c.strip()],
+        "notes": payload.notes or "",
+        "jason_verified": True,
+    }
+    db.save_knowledge_base(supplier_id, {"intelligence_seed": seed})
+
+    return {
+        "status": "saved",
+        "target_nace": seed["industry_targeting"]["target_nace"],
+        "target_sic":  seed["industry_targeting"]["target_sic"],
+        "count": len(seed["industry_targeting"]["target_nace"]),
+    }
+
+# ---------------------------------------------------------------------------
+# NACE industry targeting suggestion
+# ---------------------------------------------------------------------------
+
+_NACE_REFERENCE = """
+A   Agriculture, Forestry and Fishing
+A01 Crop and animal production, hunting and related service activities
+A02 Forestry and logging
+A03 Fishing and aquaculture
+B   Mining and Quarrying
+B05 Mining of coal and lignite
+B06 Extraction of crude petroleum and natural gas
+B07 Mining of metal ores
+B08 Other mining and quarrying
+B09 Mining support service activities
+C   Manufacturing
+C10 Manufacture of food products
+C11 Manufacture of beverages
+C12 Manufacture of tobacco products
+C13 Manufacture of textiles
+C14 Manufacture of wearing apparel
+C15 Manufacture of leather and related products
+C16 Manufacture of wood and wood products
+C17 Manufacture of paper and paper products
+C18 Printing and reproduction of recorded media
+C19 Manufacture of coke and refined petroleum products
+C20 Manufacture of chemicals and chemical products
+C21 Manufacture of basic pharmaceutical products and preparations
+C22 Manufacture of rubber and plastic products
+C23 Manufacture of other non-metallic mineral products
+C24 Manufacture of basic metals
+C25 Manufacture of fabricated metal products (excl. machinery)
+C26 Manufacture of computer, electronic and optical products
+C27 Manufacture of electrical equipment
+C28 Manufacture of machinery and equipment n.e.c.
+C29 Manufacture of motor vehicles, trailers and semi-trailers
+C30 Manufacture of other transport equipment
+C31 Manufacture of furniture
+C32 Other manufacturing
+C33 Repair and installation of machinery and equipment
+D   Electricity, Gas, Steam and Air Conditioning Supply
+D35 Electricity, gas, steam and air conditioning supply
+E   Water Supply; Sewerage, Waste Management and Remediation
+E36 Water collection, treatment and supply
+E37 Sewerage
+E38 Waste collection, treatment and disposal; materials recovery
+E39 Remediation activities and other waste management services
+F   Construction
+F41 Construction of buildings
+F42 Civil engineering
+F43 Specialised construction activities
+G   Wholesale and Retail Trade; Repair of Motor Vehicles
+G45 Wholesale and retail trade and repair of motor vehicles and motorcycles
+G46 Wholesale trade (excl. motor vehicles and motorcycles)
+G47 Retail trade (excl. motor vehicles and motorcycles)
+H   Transportation and Storage
+H49 Land transport and transport via pipelines
+H50 Water transport
+H51 Air transport
+H52 Warehousing and support activities for transportation
+H53 Postal and courier activities
+I   Accommodation and Food Service Activities
+I55 Accommodation
+I56 Food and beverage service activities
+J   Information and Communication
+J58 Publishing activities
+J61 Telecommunications
+J62 Computer programming, consultancy and related activities
+J63 Information service activities
+K   Financial and Insurance Activities
+K64 Financial service activities
+K65 Insurance, reinsurance and pension funding
+L   Real Estate Activities
+L68 Real estate activities
+M   Professional, Scientific and Technical Activities
+M69 Legal and accounting activities
+M70 Management consultancy activities
+M71 Architectural and engineering activities; technical testing and analysis
+M72 Scientific research and development
+M73 Advertising and market research
+N   Administrative and Support Service Activities
+N77 Rental and leasing activities
+N81 Services to buildings and landscape activities
+N82 Office administrative and business support activities
+O   Public Administration and Defence
+O84 Public administration and defence; compulsory social security
+P   Education
+P85 Education
+Q   Human Health and Social Work Activities
+Q86 Human health activities
+Q87 Residential care activities
+R   Arts, Entertainment and Recreation
+R93 Sports activities and amusement and recreation activities
+S   Other Service Activities
+S94 Activities of membership organisations
+S95 Repair of computers and personal and household goods
+"""
+
+
+@router.post("/{supplier_id}/suggest-nace")
+async def suggest_nace(supplier_id: str):
+    """
+    Use Gemini to suggest NACE Rev.2 division codes for this supplier's
+    target customer industries, based on the intelligence seed.
+    Returns a list of {code, label, rationale} objects.
+    """
+    import re as _re, json as _json
+
+    kb = db.get_knowledge_base(supplier_id)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge Base not found")
+
+    iseed = kb.get("intelligence_seed") or {}
+    mseed = kb.get("manual_seed") or {}
+
+    def sv(block: str, field: str) -> str:
+        return ((iseed.get(block) or {}).get(field) or {}).get("value", "") or ""
+
+    company = kb.get("company_name", "Unknown supplier")
+    product = sv("identity", "product_plain") or mseed.get("product_plain", "")
+    not_this = sv("identity", "not_this") or mseed.get("not_this", "")
+    buyer_type = sv("buyer_intelligence", "buyer_type") or mseed.get("buyer_type", "")
+    use_case = sv("buyer_intelligence", "use_case") or mseed.get("use_case", "")
+    triggers = sv("signal_recognition", "trigger_events") or ""
+    win_when = sv("winning_conditions", "we_win_when") or ""
+
+    if not product and not buyer_type:
+        raise HTTPException(
+            status_code=422,
+            detail="Build the intelligence seed first -- need product and buyer context to suggest NACE codes."
+        )
+
+    prompt = (
+        "You are an industrial sales intelligence agent. Your task: given a supplier's\n"
+        "product and buyer profile, identify which NACE Rev.2 industry divisions describe\n"
+        "their TARGET CUSTOMER industries -- the industries their buyers BELONG TO.\n\n"
+        f"SUPPLIER: {company}\n"
+        f"Product/service: {product}\n"
+        f"NOT this: {not_this or 'n/a'}\n"
+        f"Buyer type: {buyer_type or 'n/a'}\n"
+        f"Use case: {use_case or 'n/a'}\n"
+        f"Trigger events: {triggers or 'n/a'}\n"
+        f"Wins when: {win_when or 'n/a'}\n\n"
+        "NACE Rev.2 Reference (code + label):\n"
+        f"{_NACE_REFERENCE}\n"
+        "Instructions:\n"
+        "- Select 3-8 NACE DIVISION codes (3-char codes like C20, D35, F42 -- NOT single-letter sections)\n"
+        "- Focus on the industries the CUSTOMERS belong to, not the supplier itself\n"
+        "- Rank by relevance -- most important first\n"
+        "- For each code give ONE sentence of rationale tied to the supplier's specific product/buyer context\n"
+        "- Be specific -- avoid generic labels, reference the supplier's actual product or buyer trigger\n\n"
+        "Return a JSON array only:\n"
+        "[\n"
+        "  {\n"
+        "    \"code\": \"C20\",\n"
+        "    \"label\": \"Manufacture of chemicals and chemical products\",\n"
+        "    \"rationale\": \"One specific sentence.\"\n"
+        "  }\n"
+        "]\n\n"
+        "Return only the JSON array, no other text."
+    )
+
+    try:
+        response = await generate(prompt, temperature=0.2)
+        cleaned = _re.sub(r"```(?:json)?\n?", "", response).strip()
+        start = cleaned.find("[")
+        end = cleaned.rfind("]") + 1
+        if start < 0 or end <= start:
+            raise ValueError("No JSON array in response")
+        suggestions = _json.loads(cleaned[start:end])
+        clean = []
+        for s in suggestions:
+            code = str(s.get("code", "")).upper().strip()
+            if len(code) >= 2 and s.get("label") and s.get("rationale"):
+                clean.append({
+                    "code": code,
+                    "label": s["label"],
+                    "rationale": s["rationale"],
+                })
+        return {"supplier_id": supplier_id, "suggestions": clean}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"NACE suggestion failed: {exc}")

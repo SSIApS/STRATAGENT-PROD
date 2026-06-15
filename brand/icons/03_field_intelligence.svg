@@ -1,0 +1,10 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" rx="24" fill="#0f1117"/>
+  <rect x="32" y="118" width="30" height="50" stroke="#38bdf8" stroke-width="5" fill="none" rx="4"/>
+  <rect x="82" y="90" width="30" height="78" stroke="#38bdf8" stroke-width="5" fill="none" rx="4"/>
+  <rect x="132" y="56" width="30" height="112" stroke="#38bdf8" stroke-width="5" fill="none" rx="4"/>
+  <polyline points="47,112 97,84 147,50" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <polyline points="132,42 147,50 138,64" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <line x1="24" y1="168" x2="176" y2="168" stroke="#38bdf8" stroke-width="3" opacity="0.3"/>
+  <text x="100" y="196" font-family="system-ui,sans-serif" font-size="11" font-weight="700" letter-spacing="2" fill="#38bdf8" text-anchor="middle" opacity="0.5">FIELD INTEL</text>
+</svg>

@@ -1,0 +1,9 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" rx="24" fill="#0f1117"/>
+  <path d="M24 100C24 100 52 50 100 50C148 50 176 100 176 100C176 100 148 150 100 150C52 150 24 100 24 100Z" stroke="#fb923c" stroke-width="5" fill="none" stroke-linejoin="round"/>
+  <circle cx="100" cy="100" r="24" stroke="#fb923c" stroke-width="5" fill="none"/>
+  <circle cx="100" cy="100" r="9" fill="#fb923c" opacity="0.85"/>
+  <path d="M18 84C13 88 10 94 10 100" stroke="#fb923c" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.4"/>
+  <path d="M182 84C187 88 190 94 190 100" stroke="#fb923c" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.4"/>
+  <text x="100" y="178" font-family="system-ui,sans-serif" font-size="11" font-weight="700" letter-spacing="3" fill="#fb923c" text-anchor="middle" opacity="0.5">ACTIVE WATCH</text>
+</svg>

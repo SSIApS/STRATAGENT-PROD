@@ -26,13 +26,19 @@ const URGENCY_COLOUR: Record<string, string> = {
 }
 
 const MODULE_ROUTE: Record<string, string> = {
-  KB:         '/knowledge-base',
-  FI:         '/field-intelligence',
-  WATCH:      '/active-watch',
-  OUTPUT:     '/output',
-  SCOUT:      '/stratascout',
-  STRATALINK: '/stratalink',
+  KB:          '/knowledge-base',
+  STRATALYST:  '/knowledge-base',   // Seed builds live in KB
+  FI:          '/field-intelligence',
+  WATCH:       '/active-watch',
+  OUTPUT:      '/field-intelligence', // Output generated from FI result
+  SCOUT:       '/stratascout',
+  STRATALINK:  '/stratalink',
+  STRATAMESH:  '/field-intelligence',
+  INTERNAL:    '/knowledge-base',
 }
+
+// Modules where STRATAGENT can execute the action automatically
+const RUNNABLE_MODULES = new Set(['FI', 'KB', 'STRATALYST'])
 
 function PipelineScore({ score, reasoning }: { score: number; reasoning: string }) {
   const colour = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444'
@@ -106,16 +112,66 @@ function TopCallCard({ call, idx, navigate }: { call: any; idx: number; navigate
   )
 }
 
-function ActionCard({ action, navigate }: { action: any; navigate: any }) {
+function ActionCard({ action, navigate, suppliers, onRunComplete }: {
+  action: any; navigate: any; suppliers: any[]; onRunComplete?: (msg: string) => void
+}) {
   const modColour = MODULE_COLOUR[action.module] || '#64748b'
   const effortColour = EFFORT_COLOUR[action.effort] || '#64748b'
-  const route = MODULE_ROUTE[action.module]
+  const route = MODULE_ROUTE[action.module] || '/knowledge-base'
+  const isRunnable = RUNNABLE_MODULES.has(action.module)
+  const [running, setRunning] = (useState as any)(false)
+  const [ran, setRan] = (useState as any)(false)
+
+  // Resolve supplier_name → supplier_id
+  const supplierId = (() => {
+    if (!action.supplier_name) return null
+    const match = suppliers.find((s: any) =>
+      s.company_name?.toLowerCase() === action.supplier_name?.toLowerCase()
+    )
+    return match?.supplier_id || match?.id || null
+  })()
+
+  // Build navigation state so target page can auto-select supplier/company
+  const navState: any = {}
+  if (action.supplier_name) navState.supplier_name = action.supplier_name
+  if (supplierId) navState.supplier_id = supplierId
+  if (action.company_name) navState.company_name = action.company_name
+
+  async function runAction() {
+    setRunning(true)
+    try {
+      if ((action.module === 'FI') && action.company_name && supplierId) {
+        await (api as any).post('/field-intelligence/run', {
+          supplier_id: supplierId,
+          company_name: action.company_name,
+        })
+        setRan(true)
+        onRunComplete?.(`✓ FI run started for ${action.company_name}`)
+      } else if ((action.module === 'KB' || action.module === 'STRATALYST') && supplierId) {
+        await (api as any).post(`/stratalyst/${supplierId}/build-seed`)
+        setRan(true)
+        onRunComplete?.(`✓ STRATALYST seed build started for ${action.supplier_name}`)
+      } else {
+        // Can't auto-run — fall back to navigate
+        navigate(route, { state: navState })
+      }
+    } catch {
+      onRunComplete?.('⚠ Run failed — open the module manually')
+      navigate(route, { state: navState })
+    } finally {
+      setRunning(false)
+    }
+  }
+
   return (
     <div className="p-4 rounded-xl flex gap-4"
-         style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
+         style={{
+           background: 'var(--stratagent-panel)',
+           border: `1px solid ${ran ? '#22c55e44' : 'var(--stratagent-border)'}`,
+         }}>
       <div className="flex flex-col items-center gap-1 shrink-0">
-        <span className="text-2xl font-black" style={{ color: 'var(--stratagent-gold)' }}>
-          {action.priority}
+        <span className="text-2xl font-black" style={{ color: ran ? '#22c55e' : 'var(--stratagent-gold)' }}>
+          {ran ? '✓' : action.priority}
         </span>
         <span className="text-xs px-1.5 py-0.5 rounded font-mono"
               style={{ background: modColour + '22', color: modColour, border: '1px solid ' + modColour + '44' }}>
@@ -123,23 +179,47 @@ function ActionCard({ action, navigate }: { action: any; navigate: any }) {
         </span>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm mb-1" style={{ color: 'var(--stratagent-text)' }}>
+        <div className="font-semibold text-sm mb-1" style={{ color: ran ? '#22c55e' : 'var(--stratagent-text)' }}>
           {action.action}
         </div>
+        {action.supplier_name && (
+          <div className="text-xs mb-1 font-mono" style={{ color: 'var(--stratagent-gold)' }}>
+            → {action.supplier_name}{action.company_name ? ` / ${action.company_name}` : ''}
+          </div>
+        )}
         <p className="text-xs mb-2" style={{ color: 'var(--stratagent-muted)' }}>
           {action.why}
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs" style={{ color: effortColour }}>
             ⏱ {action.effort}
           </span>
-          {route && (
+          {/* Agentic Run button — only when we have enough context to execute */}
+          {isRunnable && !ran && (supplierId || action.company_name) && (
             <button
-              onClick={() => navigate(route)}
+              onClick={runAction}
+              disabled={running}
+              className="text-xs px-2.5 py-0.5 rounded font-semibold"
+              style={{
+                background: running ? 'var(--stratagent-dark)' : 'var(--stratagent-gold)',
+                color: running ? 'var(--stratagent-muted)' : '#000',
+                border: '1px solid var(--stratagent-gold)',
+                opacity: running ? 0.7 : 1,
+              }}>
+              {running ? '⏳ Running…' : '⚡ Run now'}
+            </button>
+          )}
+          {/* Navigate button — always shown as fallback */}
+          {!ran && (
+            <button
+              onClick={() => navigate(route, { state: navState })}
               className="text-xs px-2 py-0.5 rounded"
               style={{ background: 'var(--stratagent-dark)', color: 'var(--stratagent-muted)', border: '1px solid var(--stratagent-border)' }}>
-              Go →
+              Open {action.module} →
             </button>
+          )}
+          {ran && (
+            <span className="text-xs" style={{ color: '#22c55e' }}>Done</span>
           )}
         </div>
       </div>
@@ -258,6 +338,13 @@ export default function Strategist({ session }: { session: Session }) {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* ── Module identity ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-5">
+        <div style={{ width: 3, height: 18, borderRadius: 2, background: '#f472b6', flexShrink: 0 }} />
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#f472b6' }}>
+          STRATEGIST
+        </span>
+      </div>
 
       {/* Notification banner */}
       {notification && (
@@ -280,7 +367,7 @@ export default function Strategist({ session }: { session: Session }) {
               Cross-Pipeline Advisor
             </span>
           </div>
-          <h2 className="text-2xl font-black" style={{ color: 'var(--stratagent-text)' }}>
+          <h2 className="text-2xl font-black" style={{ color: '#f472b6' }}>
             Monday Brief
           </h2>
           <p className="text-sm mt-1" style={{ color: 'var(--stratagent-muted)' }}>
@@ -470,7 +557,13 @@ export default function Strategist({ session }: { session: Session }) {
               </div>
               <div className="space-y-3">
                 {brief.top_3_actions.map((action: any) => (
-                  <ActionCard key={action.priority} action={action} navigate={navigate} />
+                  <ActionCard
+                    key={action.priority}
+                    action={action}
+                    navigate={navigate}
+                    suppliers={snapshot?.kbs || []}
+                    onRunComplete={(msg) => { setNotification(msg); setTimeout(() => setNotification(null), 8000) }}
+                  />
                 ))}
               </div>
             </div>
@@ -505,81 +598,9 @@ export default function Strategist({ session }: { session: Session }) {
               ))}
             </div>
           )}
-
-          {/* Watch Alerts */}
-          {brief.watch_alerts?.length > 0 && (
-            <div className="p-5 rounded-xl space-y-2"
-                 style={{ background: 'var(--stratagent-panel)', border: '1px solid #7c3aed44' }}>
-              <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: '#7c3aed' }}>
-                Watch Alerts
-              </div>
-              {brief.watch_alerts.map((alert: string, i: number) => (
-                <div key={i} className="flex gap-2 text-xs" style={{ color: 'var(--stratagent-text)' }}>
-                  <span style={{ color: '#7c3aed' }}>⚡</span>
-                  {alert}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* STRATAGORA Market Intelligence */}
-          {brief.market_intelligence && (
-            <div className="p-5 rounded-xl space-y-3"
-                 style={{ background: 'var(--stratagent-panel)', border: '1px solid #10b98144' }}>
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-mono uppercase tracking-widest" style={{ color: '#10b981' }}>
-                  STRATAGORA Market Intelligence
-                </div>
-                {brief.market_intelligence.active_sectors?.length > 0 && (
-                  <div className="flex gap-1 flex-wrap">
-                    {brief.market_intelligence.active_sectors.slice(0, 3).map((s: string, i: number) => (
-                      <span key={i} className="text-xs px-1.5 py-0.5 rounded"
-                            style={{ background: '#10b98122', color: '#10b981', border: '1px solid #10b98133' }}>
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {brief.market_intelligence.top_market_signal && (
-                <div className="text-sm" style={{ color: 'var(--stratagent-text)' }}>
-                  {brief.market_intelligence.top_market_signal}
-                </div>
-              )}
-              {brief.market_intelligence.stratagora_recommendation && (
-                <div className="flex gap-2 text-xs p-3 rounded-lg"
-                     style={{ background: '#10b98111', color: '#10b981', border: '1px solid #10b98133' }}>
-                  <span>→</span>
-                  <span>{brief.market_intelligence.stratagora_recommendation}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* KB Health */}
-          {brief.kb_health && (
-            <div className="p-5 rounded-xl"
-                 style={{ background: 'var(--stratagent-panel)', border: '1px solid var(--stratagent-border)' }}>
-              <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: 'var(--stratagent-muted)' }}>
-                Knowledge Base Health
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { label: 'Strongest', value: brief.kb_health.strongest, colour: '#22c55e' },
-                  { label: 'Weakest', value: brief.kb_health.weakest, colour: '#ef4444' },
-                  { label: 'Fix First', value: brief.kb_health.fix_first, colour: '#f59e0b' },
-                ].map(item => (
-                  <div key={item.label}>
-                    <div className="text-xs mb-1" style={{ color: item.colour }}>{item.label}</div>
-                    <div className="text-xs" style={{ color: 'var(--stratagent-text)' }}>{item.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
         </div>
       )}
     </div>
   )
 }
+

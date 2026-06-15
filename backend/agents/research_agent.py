@@ -6,7 +6,12 @@ Produces Relationship Profiles, Convergence Index scores, and Buying Signals.
 import json
 import re
 from datetime import datetime, timezone
-from services.gemini import generate_with_grounding, generate
+from services.gemini import (
+    generate_with_grounding,
+    generate,
+    generate_with_vision,
+    generate_grounded_with_vision,
+)
 
 _WEBSITE_PATTERN = re.compile(r'^(https?://)?[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}([/?#].*)?$')
 
@@ -117,11 +122,11 @@ def _summarise_kb(kb: dict) -> str:
             if deal_size:
                 parts.append(f"Typical deal size: {deal_size}")
             if geography:
-                parts.append(f"Geography (hard constraint): {geography}")
+                parts.append(f"Target geography (preferred market -- note if prospect is outside this, but do not penalise CI for geography alone): {geography}")
             if rel_model:
                 parts.append(f"Relationship model: {rel_model}")
             if min_thresh:
-                parts.append(f"Minimum threshold: {min_thresh}")
+                parts.append(f"Minimum deal threshold (flag if prospect appears below this, but use as context not a hard cutoff): {min_thresh}")
 
     # -- WINNING CONDITIONS BLOCK (feeds SD scoring guidance) --
     if has_iseed:
@@ -180,19 +185,128 @@ def _parse_json_response(response: str) -> dict:
         return {}
 
 
+async def _classify_prospect_industry(company_name: str, company_overview: str) -> dict:
+    """
+    Classify a prospect into NACE Rev.2 and SIC codes.
+    Uses the company overview already generated -- no new grounded search.
+    Non-blocking: returns empty dict on any failure.
+    """
+    if not company_overview or len(company_overview) < 30:
+        return {}
+    prompt = f"""Classify this company into industry codes based on what they DO (their primary business activity).
+
+COMPANY: {company_name}
+OVERVIEW: {company_overview}
+
+Return a JSON object only:
+{{
+  "nace_code": "most specific NACE Rev.2 code, e.g. C20.1",
+  "nace_label": "full label, e.g. Manufacture of basic chemicals",
+  "nace_division": "letter + 2 digits only, e.g. C20",
+  "nace_section": "single letter only, e.g. C",
+  "sic_code": "US SIC 4-digit code, e.g. 2819",
+  "sic_label": "SIC label, e.g. Industrial Inorganic Chemicals",
+  "confidence": "high or medium or low",
+  "classification_notes": "one sentence -- basis for this classification"
+}}
+
+Rules:
+- Classify what they DO, not what they BUY
+- Use NACE Rev. 2 (EU standard)
+- nace_division = letter + 2 digits (e.g. C20, D35, I55)
+- nace_section = single letter (e.g. C, D, I)
+- If uncertain, pick the code best matching primary revenue activity
+- Return only the JSON object, no other text"""
+    try:
+        response = await generate(prompt, temperature=0.1)
+        cleaned = re.sub(r"```(?:json)?\n?", "", response).strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}") + 1
+        if start >= 0 and end > start:
+            result = json.loads(cleaned[start:end])
+            # Normalise -- ensure section and division are always populated
+            code = result.get("nace_code", "")
+            if code and not result.get("nace_section"):
+                result["nace_section"] = code[0].upper() if code else ""
+            if code and not result.get("nace_division"):
+                import re as _re2
+                m = _re2.match(r'^([A-Z]\d{2})', code.upper())
+                result["nace_division"] = m.group(1) if m else code[:3].upper()
+            return result
+    except Exception:
+        pass
+    return {}
+
+
 async def research_prospect(
     company_name: str,
     supplier_kb: dict,
+    product_context: dict = None,
+    geography: str = "",
+    prospect_url: str = "",
 ) -> dict:
     """
     Research a prospect company and score alignment with supplier capability.
     Returns a full Relationship Profile with Convergence Index and Buying Signals.
+    Optional product_context injects PAM signal intelligence when FI is launched from PAM.
+    Optional geography scopes the search to a target region (e.g. Denmark, Scandinavia).
     """
     supplier_summary = _summarise_kb(supplier_kb)
 
     current_date = _current_date_str()
     cutoff_year, cutoff_month = _cutoff_year_month()
     cutoff_str = datetime(cutoff_year, cutoff_month, 1).strftime("%B %Y")
+
+    # Build product context block if launched from PAM
+    product_context_block = ""
+    if product_context:
+        pname = product_context.get("product_name", "")
+        archetype = product_context.get("archetype", "")
+        psignals = product_context.get("signals", [])[:6]
+        sig_lines = []
+        for s in psignals:
+            headline = s.get("headline", "")
+            stype = s.get("signal_type", "")
+            if headline:
+                sig_lines.append(f"  - [{stype}] {headline}")
+        sig_text = "\n".join(sig_lines) if sig_lines else "  (none)"
+        product_context_block = (
+            "\n\nPRODUCT INTELLIGENCE CONTEXT (from PAM scan -- use to sharpen scoring):\n"
+            f"Product: {pname}  |  Archetype: {archetype}\n"
+            "Key buying signals already detected for this product:\n"
+            + sig_text +
+            "\nWhen scoring this prospect, look specifically for evidence that they:\n"
+            "  - Have training, certification, or workforce development budgets\n"
+            "  - Operate in the sectors flagged by these signals\n"
+            "  - Show procurement patterns that match this product type\n"
+            "  - Have roles (Training Manager, HSE Lead, Procurement) who would buy this\n"
+        )
+
+    # Build geography focus block -- scopes research to supplier region
+    geo_str = (geography or "").strip()
+    if not geo_str:
+        # Fall back to KB supplier location if no explicit geography provided
+        geo_str = (supplier_kb.get("supplier_location") or "").strip()
+    geography_block = ""
+    if geo_str:
+        geography_block = (
+            f"\n\nGEOGRAPHIC FOCUS: {geo_str}\n"
+            "Prioritise companies that operate in, are headquartered in, or actively serve this geography.\n"
+            "Companies with no presence or operations in this region are secondary prospects only.\n"
+        )
+
+    # Build URL anchor block -- when provided, forces Gemini to visit the official site first
+    url_anchor_block = ""
+    if prospect_url and prospect_url.strip():
+        clean_url = prospect_url.strip()
+        url_anchor_block = (
+            f"\n\nOFFICIAL WEBSITE -- MANDATORY FIRST STEP:\n"
+            f"Visit this URL IMMEDIATELY before forming any assessment: {clean_url}\n"
+            f"Read the homepage, About/Company, Products/Services, and News pages.\n"
+            f"This is the ground truth for what this company does. Do NOT rely on your training data\n"
+            f"or search results to determine the company's identity -- the website is authoritative.\n"
+            f"If the website content contradicts any search result, trust the website.\n"
+        )
 
     prompt = f"""
 You are STRATAGENT conducting deep prospect research for an industrial supplier.
@@ -201,7 +315,7 @@ TODAY'S DATE: {current_date}
 SIGNAL CUTOFF: {cutoff_str} -- signals older than this are STALE and must be excluded entirely.
 
 SUPPLIER CAPABILITY SUMMARY:
-{supplier_summary}
+{supplier_summary}{product_context_block}{geography_block}{url_anchor_block}
 
 PROSPECT TO RESEARCH: {company_name}
 
@@ -236,7 +350,19 @@ WHAT TO RESEARCH (search all of these):
    - Regulatory compliance requirements matching the supplier's regulatory drivers
 3. Specific facilities, plants, or projects where the supplier's products would apply
 4. Decision maker -- search for the role titles listed in the Supplier Intelligence Brief
-   (Decision maker role and Influencer/specifier role) -- find the specific person
+   (Decision maker role and Influencer/specifier role) -- find the specific person.
+   CONTACT SOURCING RULES (CRITICAL -- non-negotiable):
+   - Only name a contact if you can identify them from a specific, citeable external source:
+     a LinkedIn profile URL, a company website bio/team page, a press release, a news article,
+     or an industry directory.
+   - You MUST record WHERE you found the name (source_url) and WHAT it said (source_snippet).
+   - If you find a name only by inferring from a role title ("the procurement head is probably...")
+     with no external source, set confidence to INFERRED -- never promote an inferred contact
+     to PROBABLE or VERIFIED.
+   - If no sourceable contact exists, return name as null and confidence as null.
+     A null contact is far better than a hallucinated one.
+   - The source must be recent enough to suggest the person is still in that role.
+     A LinkedIn profile last updated 3+ years ago should be PROBABLE at best.
 5. Current supplier relationships in this product category
 6. Recent news and strategic developments
 
@@ -261,10 +387,14 @@ Return a JSON object:
   "company_overview": "verified description -- specific, not generic",
   "operational_context": "what they do and where it creates the need",
   "decision_maker": {{
-    "name": "name or null",
+    "name": "name or null -- only if found via a citeable external source",
     "title": "title or null",
-    "linkedin": "url or null",
-    "confidence": "high/medium/low"
+    "linkedin": "LinkedIn profile URL if found, or null",
+    "source_url": "URL where this contact was found -- LinkedIn, company website, press release, news article, industry directory -- REQUIRED if name is not null, null otherwise",
+    "source_type": "one of: LINKEDIN | COMPANY_WEBSITE | PRESS_RELEASE | NEWS_ARTICLE | INDUSTRY_DIRECTORY | null",
+    "source_date": "approximate recency of the source -- e.g. 'March 2026', 'last 30 days', '2024' -- or null",
+    "source_snippet": "the exact text or context where the name appeared -- e.g. 'Lars Henriksen, Head of Procurement, quoted in...' -- or null",
+    "confidence": "VERIFIED if found on LinkedIn with current role confirmed; PROBABLE if found on company website or press release from last 12 months; INFERRED if derived from role title without a named external source -- use INFERRED only as last resort; null if name is null"
   }},
   "buying_signals": [
     {{
@@ -320,11 +450,50 @@ Rules:
     site = site.strip().strip('"').strip("'")
     if site.lower() in ("null", "none", "n/a", "unknown", ""):
         site = ""
-    elif not _WEBSITE_PATTERN.match(site):
-        site = ""
-    elif not site.lower().startswith(("http://", "https://")):
-        site = f"https://{site}"
+    else:
+        # Strip trailing commentary Gemini sometimes appends after the URL
+        # e.g. "https://nobian.com (official site)" or "https://nobian.com."
+        site = site.split()[0]
+        site = site.rstrip('.,;:)')
+        if not _WEBSITE_PATTERN.match(site):
+            site = ""
+        elif not site.lower().startswith(("http://", "https://")):
+            site = f"https://{site}"
     profile["website"] = site
+
+    # Post-process: derive contact_confidence and enforce sourcing rules
+    dm = profile.get("decision_maker") or {}
+    dm_name = dm.get("name")
+    dm_conf = str(dm.get("confidence") or "").upper()
+
+    if not dm_name or dm_name.lower() in ("null", "none", "n/a", "unknown"):
+        # No contact found -- clean up
+        dm["name"] = None
+        dm["confidence"] = None
+        dm["source_url"] = dm.get("source_url") or None
+        contact_confidence = None
+    elif dm_conf == "INFERRED":
+        # Contact derived from role title only, no external source -- block from outreach
+        contact_confidence = "inferred"
+        dm["_outreach_blocked"] = True
+        dm["_outreach_blocked_reason"] = "Contact is AI-inferred with no citeable source. Verify via LinkedIn or company website before use in outreach."
+    elif dm_conf == "VERIFIED":
+        contact_confidence = "verified"
+    elif dm_conf == "PROBABLE":
+        contact_confidence = "probable"
+    else:
+        # Fallback: if a source_url exists treat as probable, otherwise inferred
+        if dm.get("source_url"):
+            contact_confidence = "probable"
+            dm["confidence"] = "PROBABLE"
+        else:
+            contact_confidence = "inferred"
+            dm["confidence"] = "INFERRED"
+            dm["_outreach_blocked"] = True
+            dm["_outreach_blocked_reason"] = "No source URL recorded. Verify contact before use in outreach."
+
+    profile["decision_maker"] = dm
+    profile["contact_confidence"] = contact_confidence  # top-level convenience field
 
     # Post-process: separate stale signals into historical_signals (preserve, don't discard)
     import re as _re
@@ -376,7 +545,34 @@ Rules:
         if past_years and max(past_years) < now.year:
             profile["approach_window"] = None
 
+    # Industry classification -- fast non-grounded pass, never blocks the profile
+    try:
+        overview = profile.get("company_overview", "")
+        classification = await _classify_prospect_industry(company_name, overview)
+        if classification:
+            profile["industry_classification"] = classification
+    except Exception:
+        pass
+
+    # Normalise recommended_path -- Gemini sometimes returns variants like PARK_AND_WATCH,
+    # MONITOR, NO_FIT etc. Force to one of the four valid B2B UI values.
+    _valid_b2b_paths = {"CONVERGENCE_PROPOSAL", "MUTUAL_VALUE_BRIEF", "FIRST_SIGNAL", "PARK"}
+    _raw_path = str(profile.get("recommended_path", "")).upper().strip()
+    if _raw_path not in _valid_b2b_paths:
+        _ci = profile.get("convergence_index")
+        _score_val = (_ci.get("score", 0) if isinstance(_ci, dict) else 0) or 0
+        if _score_val >= 90:
+            _raw_path = "CONVERGENCE_PROPOSAL"
+        elif _score_val >= 75:
+            _raw_path = "MUTUAL_VALUE_BRIEF"
+        elif _score_val >= 60:
+            _raw_path = "FIRST_SIGNAL"
+        else:
+            _raw_path = "PARK"
+    profile["recommended_path"] = _raw_path
+
     return profile
+
 
 
 async def find_alternative_prospects(kb: dict, company_name: str) -> list:
@@ -385,3 +581,501 @@ async def find_alternative_prospects(kb: dict, company_name: str) -> list:
     Stub -- returns empty list. Full implementation: STRATAGORA phase.
     """
     return []
+
+
+# ---------------------------------------------------------------------------
+# KB type detection (mirrors stratagora_agent._is_consumer_retail_kb)
+# ---------------------------------------------------------------------------
+
+_CONSUMER_KEYWORDS = [
+    "gift", "retail", "poster", "art print", "wall art", "novelty", "collectible",
+    "consumer", "e-commerce", "etsy", "amazon", "redbubble", "society6", "zazzle",
+    "print on demand", "fandom", "pop culture", "merchandise", "merch", "pet product",
+    "dog lover", "cat lover", "hobby", "lifestyle", "home decor", "greeting card",
+    "sticker", "apparel", "souvenir", "gift shop", "specialty retail",
+]
+
+
+def is_consumer_retail_kb(kb: dict) -> bool:
+    """
+    Detect whether a KB is a consumer/retail product supplier vs B2B industrial.
+    True = consumer/retail, route to research_distribution_channel().
+    """
+    seed = kb.get("manual_seed", {})
+    profile = kb.get("profile", {})
+    combined = " ".join([
+        str(seed.get("buyer_type", "")),
+        str(seed.get("use_case", "")),
+        str(seed.get("product_plain", "")),
+        str(profile.get("buyer_profiles", "")),
+        str(profile.get("product_catalogue", "")),
+    ]).lower()
+    return any(kw in combined for kw in _CONSUMER_KEYWORDS)
+
+
+# ---------------------------------------------------------------------------
+# Distribution channel research (Phase 2 -- consumer/retail FI mode)
+# ---------------------------------------------------------------------------
+
+def _summarise_kb_for_channel(kb: dict) -> str:
+    """
+    Build a concise product + audience brief for the channel research prompt.
+    Focuses on what the product IS and WHO buys it -- not industrial signals.
+    """
+    seed = kb.get("manual_seed", {})
+    profile = kb.get("profile", {})
+    iseed = kb.get("intelligence_seed") or {}
+    company = kb.get("company_name", "Unknown Supplier")
+
+    has_iseed = bool(iseed.get("identity", {}).get("product_plain", {}).get("value"))
+
+    if has_iseed:
+        product   = _seed_val(iseed, "identity", "product_plain") or seed.get("product_plain", "")
+        not_this  = _seed_val(iseed, "identity", "not_this") or seed.get("not_this", "")
+        problem   = _seed_val(iseed, "identity", "problem_solved")
+        buyer     = _seed_val(iseed, "buyer_intelligence", "buyer_type") or seed.get("buyer_type", "")
+        use_case  = _seed_val(iseed, "buyer_intelligence", "use_case") or seed.get("use_case", "")
+        diff      = _seed_val(iseed, "winning_conditions", "differentiator")
+        geography = _seed_val(iseed, "commercial_reality", "geography")
+        deal_size = _seed_val(iseed, "commercial_reality", "deal_size")
+    else:
+        product   = seed.get("product_plain", "")
+        not_this  = seed.get("not_this", "")
+        buyer     = seed.get("buyer_type", "")
+        use_case  = seed.get("use_case", "")
+        problem = diff = geography = deal_size = ""
+
+    # Append saved visual analysis summary if available (injected by FI router)
+    saved_va = kb.get("_saved_visual_analysis") or {}
+    visual_lines = []
+    if saved_va:
+        tier = saved_va.get("competitive_position", {}).get("tier", "")
+        quality = saved_va.get("quality_indicators", {}).get("overall_quality", "")
+        mkt_desc = saved_va.get("marketing_description", "")
+        positioning = saved_va.get("recommended_positioning", "")
+        if tier:
+            visual_lines.append(f"VISUAL QUALITY TIER (from image analysis): {tier}")
+        if quality:
+            visual_lines.append(f"OVERALL QUALITY SCORE: {quality}/100")
+        if mkt_desc:
+            visual_lines.append(f"MARKETING DESCRIPTION: {mkt_desc}")
+        if positioning:
+            visual_lines.append(f"RECOMMENDED VISUAL POSITIONING: {positioning}")
+
+    # Include supplier location if set directly on KB
+    loc = kb.get("supplier_location", "")
+
+    parts = [
+        f"SUPPLIER: {company}",
+        f"SUPPLIER LOCATION: {loc}" if loc else "",
+        f"PRODUCT: {product}" if product else "",
+        f"NOT THIS: {not_this}" if not_this else "",
+        f"BUYER TYPE: {buyer}" if buyer else "",
+        f"USE CASE / CONTEXT: {use_case}" if use_case else "",
+        f"DIFFERENTIATOR: {diff}" if diff else "",
+        f"GEOGRAPHY: {geography}" if geography else "",
+        f"PRICE RANGE / DEAL SIZE: {deal_size}" if deal_size else "",
+        f"PROBLEM SOLVED: {problem}" if problem else "",
+    ] + visual_lines
+    return "\n".join(p for p in parts if p)
+
+
+def _format_stratagora_context(signals: list, channel_name: str) -> str:
+    """
+    Extract relevant STRATAGORA signals for a specific channel to inject into prompt.
+    Returns formatted string or empty string if no relevant signals.
+    """
+    if not signals:
+        return ""
+
+    channel_lower = channel_name.lower()
+    relevant = [
+        s for s in signals
+        if channel_lower in str(s.get("channel", "")).lower()
+        or channel_lower in str(s.get("headline", "")).lower()
+    ]
+
+    if not relevant:
+        return ""
+
+    lines = ["STRATAGORA MARKET INTELLIGENCE (pre-scanned signals for this channel):"]
+    for s in relevant[:5]:
+        sat = s.get("saturation_score")
+        sat_str = f"  Saturation score: {sat}/100" if sat is not None else ""
+        lines.append(
+            f"- [{s.get('signal_type', '')}] {s.get('headline', '')}"
+            f"{sat_str}"
+            f"\n  {s.get('detail', '')}"
+        )
+    return "\n".join(lines)
+
+
+async def research_distribution_channel(
+    channel_name: str,
+    supplier_kb: dict,
+    stratagora_signals: list = None,
+    product_images: list = None,
+    supplier_location: str = "",
+) -> dict:
+    """
+    Evaluate a distribution channel for a consumer/retail product supplier.
+
+    Scores on 6 dimensions:
+      Audience Fit | Channel Health | Competitive Density |
+      Commercial Openness | Margin Potential | Saturation Headroom
+
+    Weighted SD score:
+      Audience Fit:        25%
+      Saturation Headroom: 25%
+      Channel Health:      20%
+      Margin Potential:    15%
+      Commercial Openness: 15%
+
+    Returns a profile dict compatible with the existing FI Firestore schema,
+    with prospect_type = "distribution_channel".
+    product_images: optional list of {"data": base64_str, "mime_type": str}
+    """
+    current_date = _current_date_str()
+    supplier_brief = _summarise_kb_for_channel(supplier_kb)
+    stratagora_context = _format_stratagora_context(stratagora_signals or [], channel_name)
+
+    # Build geo context -- use passed location or fall back to KB field
+    _loc = supplier_location or supplier_kb.get("supplier_location", "")
+    if _loc:
+        supplier_location_block = (
+            f"{_loc}. "
+            "Factor this into your channel evaluation: "
+            "consider regional shipping costs and lead times from this origin, "
+            "proximity to distribution hubs, regional consumer preferences and buying culture, "
+            "local market saturation vs national/global opportunity, "
+            "and any import/export or fulfilment friction for this geography."
+        )
+    else:
+        supplier_location_block = (
+            "Unknown -- evaluate assuming global supply capability."
+        )
+
+    prompt = f"""You are STRATAGENT evaluating a distribution channel for a consumer product supplier.
+Your mission: give an honest, grounded assessment of whether this channel is worth pursuing,
+how competitive it is, and what the supplier needs to do to succeed there.
+
+TODAY: {current_date}
+
+SUPPLIER & PRODUCT:
+{supplier_brief}
+
+CHANNEL TO EVALUATE: {channel_name}
+
+SUPPLIER ORIGIN: {supplier_location_block}
+
+{stratagora_context}
+
+RESEARCH THIS CHANNEL THOROUGHLY. Go to the platform or retailer website. Search for:
+- How the platform works for sellers/suppliers
+- Current state of this product category on the platform (how many sellers, competition level)
+- Platform growth/decline trends
+- Commission structure, fee schedule, revenue share terms
+- Onboarding requirements, approval process, restrictions
+- Success stories or case studies for similar products
+- Any recent policy changes affecting this product category
+
+SCORING GUIDE:
+Score each dimension 0-100. Be realistic -- do not inflate scores. A score of 50 means average/neutral.
+
+1. AUDIENCE_FIT (0-100)
+   - 90+: This channel's core audience is the exact buyer for this product
+   - 70-89: Strong overlap -- most buyers here would recognise and want this product
+   - 50-69: Partial fit -- some buyers here want this, but it is not the channel's focus
+   - 30-49: Weak fit -- this product is off-category for this channel
+   - <30: Wrong channel -- buyers here are unlikely to want this product
+
+2. CHANNEL_HEALTH (0-100)
+   - 90+: Platform growing fast, strong seller success stories, algorithm favours new products
+   - 70-89: Healthy growth, stable environment for new sellers
+   - 50-69: Mature/stable -- viable but not accelerating
+   - 30-49: Flat or declining -- tough to grow without existing audience
+   - <30: Platform in decline or hostile to new sellers
+
+3. COMPETITIVE_DENSITY (0-100)
+   - This is the SATURATION score -- higher = more crowded
+   - 90+: Extremely crowded, thousands of similar products, price war conditions
+   - 70-89: High competition, need strong differentiation to stand out
+   - 50-69: Moderate competition -- winnable with good product and positioning
+   - 30-49: Low competition -- clear opportunity
+   - <30: Near-empty -- first mover advantage available
+
+4. COMMERCIAL_OPENNESS (0-100)
+   - 90+: Open platform, easy onboarding, no approval needed
+   - 70-89: Standard process, straightforward to enter
+   - 50-69: Some requirements, moderate effort to get started
+   - 30-49: Significant barriers -- approval, minimum order, exclusivity requirements
+   - <30: Closed or extremely difficult to enter
+
+5. MARGIN_POTENTIAL (0-100)
+   - 90+: High margin, low platform fees, premium pricing possible
+   - 70-89: Good margin -- platform fees reasonable, price integrity maintainable
+   - 50-69: Average -- standard platform fees, some price pressure
+   - 30-49: Thin margin -- high fees or strong price competition
+   - <30: Margin-destructive -- not viable at reasonable price points
+
+6. SATURATION_HEADROOM (0-100)
+   - Inverse of competitive density -- how much room exists for a new entrant
+   - Derived from COMPETITIVE_DENSITY if no STRATAGORA signal: headroom = 100 - competitive_density
+   - If STRATAGORA has a saturation_score for this channel, use: headroom = 100 - saturation_score
+   - 70+: Clear room to enter and grow
+   - 40-69: Possible but requires differentiation
+   - <40: Very little room -- only enter with a strong unique angle
+"""
+
+    if product_images:
+        prompt += """
+PRODUCT IMAGE PROVIDED: You can see the actual product above.
+Use the visual style, art quality, and aesthetic to inform your scoring --
+specifically audience fit (does the visual style suit this channel's aesthetic?)
+and competitive density (how does this product visually compare to what already
+exists on this channel?). A visually distinctive product earns higher audience
+fit and saturation headroom scores than a commodity-looking one.
+"""
+
+    prompt += f"""
+Return a JSON object:
+{{
+  "prospect_type": "distribution_channel",
+  "channel_name": "{channel_name}",
+  "channel_url": "official URL of the platform or retailer, or null",
+  "channel_overview": "2-3 sentence description of this channel and how it works for sellers",
+  "audience_fit": {{
+    "score": 0,
+    "reasoning": "why this channel's audience does or does not match the product's buyers"
+  }},
+  "channel_health": {{
+    "score": 0,
+    "trend": "growing | stable | declining",
+    "reasoning": "evidence for this channel's current health and trajectory"
+  }},
+  "competitive_density": {{
+    "score": 0,
+    "reasoning": "how crowded this product category is on this channel right now",
+    "notable_competitors": "names of 2-3 top competitors if found, or null"
+  }},
+  "commercial_openness": {{
+    "score": 0,
+    "entry_requirements": "what a new supplier needs to do to list or sell here",
+    "commission_structure": "fee percentage or revenue share if known, or null",
+    "reasoning": "how easy or hard it is to enter this channel"
+  }},
+  "margin_potential": {{
+    "score": 0,
+    "estimated_margin": "estimated net margin percentage range after platform fees, or null if unknown",
+    "reasoning": "why margin is strong or weak on this channel"
+  }},
+  "saturation_headroom": {{
+    "score": 0,
+    "source": "stratagora | estimated",
+    "reasoning": "how much room remains for a new entrant"
+  }},
+  "convergence_index": {{
+    "score": 0,
+    "reasoning": "weighted summary: Audience Fit 25%%, Saturation Headroom 25%%, Channel Health 20%%, Margin Potential 15%%, Commercial Openness 15%%",
+    "what_would_improve_it": "what information or change would raise this score"
+  }},
+  "recommended_path": "CHANNEL_PITCH_BRIEF | EXPLORE | MONITOR | SKIP",
+  "approach_strategy": "2-3 sentences: how to position the product for this channel specifically",
+  "key_requirements": "what the supplier must have ready to enter this channel",
+  "priority_actions": ["action 1", "action 2", "action 3"],
+  "confidence_notes": "what was found vs estimated -- be specific about data gaps"
+}}
+
+Recommended path rules:
+- CHANNEL_PITCH_BRIEF: SD >= 75 -- strong fit, low competition, worth an immediate approach
+- EXPLORE: SD 60-74 -- worth investigating further, prepare a soft approach
+- MONITOR: SD 45-59 -- not ready yet, watch for conditions to improve
+- SKIP: SD < 45 -- poor fit or too crowded, move on
+
+IMPORTANT: Compute the convergence_index.score as the weighted average:
+  score = round( (audience_fit * 0.25) + (saturation_headroom * 0.25) + (channel_health * 0.20) + (margin_potential * 0.15) + (commercial_openness * 0.15) )
+
+Return only the JSON object. No preamble.
+"""
+
+    if product_images:
+        response = await generate_grounded_with_vision(prompt, product_images)
+    else:
+        response = await generate_with_grounding(prompt)
+    profile = _parse_json_response(response)
+
+    if not profile:
+        profile = {}
+
+    profile["prospect_type"] = "distribution_channel"
+    profile["channel_name"] = channel_name
+
+    # Compute / validate weighted SD score
+    try:
+        af = int(profile.get("audience_fit", {}).get("score", 50))
+        sh = int(profile.get("saturation_headroom", {}).get("score", 50))
+        ch = int(profile.get("channel_health", {}).get("score", 50))
+        mp = int(profile.get("margin_potential", {}).get("score", 50))
+        co = int(profile.get("commercial_openness", {}).get("score", 50))
+        computed = round(af * 0.25 + sh * 0.25 + ch * 0.20 + mp * 0.15 + co * 0.15)
+        if "convergence_index" not in profile or not isinstance(profile["convergence_index"], dict):
+            profile["convergence_index"] = {}
+        profile["convergence_index"]["score"] = max(0, min(100, computed))
+    except (TypeError, ValueError):
+        if "convergence_index" not in profile:
+            profile["convergence_index"] = {"score": 50, "reasoning": "Score could not be computed."}
+
+    try:
+        profile["convergence_index"]["score"] = int(profile["convergence_index"]["score"])
+    except (ValueError, TypeError, KeyError):
+        profile["convergence_index"]["score"] = 50
+
+    score = profile["convergence_index"]["score"]
+    path_map = {
+        score >= 75: "CHANNEL_PITCH_BRIEF",
+        60 <= score < 75: "EXPLORE",
+        45 <= score < 60: "MONITOR",
+        score < 45: "SKIP",
+    }
+    correct_path = next((v for k, v in path_map.items() if k), "MONITOR")
+    profile["recommended_path"] = correct_path
+
+    if not isinstance(profile.get("priority_actions"), list):
+        profile["priority_actions"] = []
+
+    return profile
+
+
+# ---------------------------------------------------------------------------
+# Visual quality analysis -- product image intelligence
+# ---------------------------------------------------------------------------
+
+async def analyze_product_visuals(
+    images: list,
+    supplier_kb: dict,
+    competitor_context: str = "",
+) -> dict:
+    """
+    Deep visual quality and competitive comparison analysis for a product.
+
+    Gemini looks at the actual uploaded product image and assesses:
+    - Art style, technique, and production quality indicators
+    - How it compares visually to typical competitors in this category
+    - Commercial appeal for gift, wall art, collector, and retail contexts
+    - Channel aesthetic fit for each distribution channel
+    - Generates a marketing-ready product description paragraph
+
+    images: [{"data": base64_str, "mime_type": "image/jpeg"}, ...]
+    """
+    if not images:
+        return {"error": "No product images provided for visual analysis."}
+
+    supplier_brief = _summarise_kb_for_channel(supplier_kb)
+
+    competitor_section = (
+        f"\nCOMPETITOR CONTEXT PROVIDED:\n{competitor_context}\n"
+        if competitor_context
+        else (
+            "\nNo competitor images provided. Compare visually against your knowledge of "
+            "typical novelty art posters, print-on-demand products, and gift/collectible "
+            "artwork sold on Etsy, Redbubble, Society6, and Amazon Handmade.\n"
+        )
+    )
+
+    prompt = f"""You are STRATAGENT's visual intelligence analyst.
+You are looking at one or more product images from this supplier.
+Your job is to give an honest, detailed visual quality and market positioning assessment.
+This is NOT a general description -- it is a competitive analysis.
+
+SUPPLIER & PRODUCT CONTEXT:
+{supplier_brief}
+{competitor_section}
+
+ANALYSIS FRAMEWORK -- assess each dimension based on what you actually see:
+
+1. VISUAL STYLE: Identify the art technique (digital illustration, watercolor, vector,
+   photorealistic, hand-drawn, collage, mixed media, etc.). Note the color palette
+   (vibrant, muted, monochrome, high-contrast, etc.). Describe the composition.
+
+2. PRINT QUALITY INDICATORS: Assess:
+   - Line clarity and sharpness
+   - Color richness and depth
+   - Detail level (simple vs complex)
+   - Perceived production value (premium or commodity?)
+
+3. COMPETITIVE POSITION: Compare to typical competitors:
+   - Mass market POD (Redbubble/Society6 average)
+   - Etsy artisan/independent prints
+   - Licensed novelty merchandise (Hot Topic/Spencer's tier)
+   - Premium limited art prints (Mondo tier)
+   Where does this sit? Be specific.
+
+4. DIFFERENTIATORS: What visual elements are genuinely distinctive vs generic?
+
+5. COMMERCIAL APPEAL by context:
+   - Gift potential
+   - Wall art appeal
+   - Collector appeal
+   - Retail display impact
+
+6. CHANNEL AESTHETIC FIT based on visual style alone:
+   - Etsy (handmade/artisan vs polished commercial)
+   - Redbubble/Society6 (POD marketplace standards)
+   - Amazon (product photography standards)
+   - Specialty retail / gift shops (shelf appeal)
+   - Social commerce / Instagram (scroll-stopping visual)
+
+7. MARKETING DESCRIPTION: Write one compelling, professional product description
+   paragraph (60-90 words) in third person. Make it specific to what you see.
+   Focus on emotional appeal and visual impact. No generic language.
+
+8. QUALITY VERDICT: One honest sentence. Above, at, or below market standard? Why?
+
+Return a JSON object:
+{{
+  "visual_style": {{
+    "technique": "art technique identified",
+    "color_palette": "description of color palette",
+    "composition": "description of composition and layout",
+    "detail_level": "simple | moderate | complex | highly detailed"
+  }},
+  "quality_indicators": {{
+    "print_clarity": 0,
+    "color_richness": 0,
+    "composition_score": 0,
+    "production_value": 0,
+    "overall_quality": 0,
+    "quality_notes": "specific observations driving the quality score"
+  }},
+  "competitive_position": {{
+    "tier": "premium | above_average | market_average | below_average | commodity",
+    "vs_pod_platforms": "how this compares to Redbubble/Society6 average",
+    "vs_etsy_artisan": "how this compares to top Etsy sellers in this category",
+    "vs_licensed_novelty": "how this compares to Hot Topic / Spencer's tier",
+    "differentiators": ["list of genuine visual differentiators"],
+    "weaknesses": ["honest list of any visual weaknesses or generic elements"]
+  }},
+  "commercial_appeal": {{
+    "gift_potential": 0,
+    "wall_art_appeal": 0,
+    "collector_appeal": 0,
+    "retail_display_impact": 0,
+    "notes": "what drives appeal or limits it"
+  }},
+  "channel_aesthetic_fit": {{
+    "etsy": {{"fit": "high | medium | low", "reason": "why"}},
+    "redbubble_society6": {{"fit": "high | medium | low", "reason": "why"}},
+    "amazon": {{"fit": "high | medium | low", "reason": "why"}},
+    "specialty_retail": {{"fit": "high | medium | low", "reason": "why"}},
+    "instagram_social": {{"fit": "high | medium | low", "reason": "why"}}
+  }},
+  "marketing_description": "compelling 60-90 word product description -- specific to what is seen, not generic",
+  "quality_verdict": "one honest sentence: above / at / below market standard and why"
+}}
+"""
+
+    response = await generate_grounded_with_vision(prompt, images)
+    result = _parse_json_response(response)
+    if not result:
+        result = {}
+    return result

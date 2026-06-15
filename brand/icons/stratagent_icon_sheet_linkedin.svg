@@ -1,0 +1,128 @@
+<svg width="1200" height="628" viewBox="0 0 1200 628" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="628" fill="#0c0f16"/>
+  <!-- Subtle grid lines -->
+  <line x1="0" y1="314" x2="1200" y2="314" stroke="#d4a843" stroke-width="0.5" opacity="0.08"/>
+  <line x1="600" y1="0" x2="600" y2="628" stroke="#d4a843" stroke-width="0.5" opacity="0.08"/>
+
+  <!-- Header -->
+  <text x="600" y="52" font-family="system-ui,sans-serif" font-size="13" font-weight="700" letter-spacing="8" fill="#d4a843" text-anchor="middle" opacity="0.7">STRATAGENT INTELLIGENCE PLATFORM</text>
+  <text x="600" y="76" font-family="system-ui,sans-serif" font-size="11" fill="#6b7a99" text-anchor="middle" letter-spacing="3">Strategic Sales International ApS</text>
+
+  <!-- Divider -->
+  <line x1="80" y1="92" x2="1120" y2="92" stroke="#d4a843" stroke-width="0.8" opacity="0.2"/>
+
+  <!-- ── Row 1: Pipeline (3 icons) ── y=130 center -->
+  <!-- Row label -->
+  <text x="80" y="118" font-family="system-ui,sans-serif" font-size="9" font-weight="700" letter-spacing="4" fill="#6b7a99" opacity="0.8">INTELLIGENCE PIPELINE</text>
+
+  <!-- KB icon — cx=200 -->
+  <g transform="translate(110,130)">
+    <rect width="160" height="160" rx="16" fill="#1a1f2e"/>
+    <ellipse cx="80" cy="50" rx="36" ry="13" stroke="#d4a843" stroke-width="4" fill="none"/>
+    <line x1="44" y1="50" x2="44" y2="88" stroke="#d4a843" stroke-width="4"/>
+    <line x1="116" y1="50" x2="116" y2="88" stroke="#d4a843" stroke-width="4"/>
+    <ellipse cx="80" cy="88" rx="36" ry="13" stroke="#d4a843" stroke-width="4" fill="none"/>
+    <ellipse cx="80" cy="69" rx="36" ry="13" stroke="#d4a843" stroke-width="2.5" stroke-dasharray="6 4" fill="none" opacity="0.4"/>
+    <path d="M80 22L87 32H80H73L80 22Z" fill="#d4a843" opacity="0.75"/>
+    <text x="80" y="128" font-family="system-ui,sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="#d4a843" text-anchor="middle" opacity="0.8">KNOWLEDGE BASE</text>
+  </g>
+
+  <!-- StrataScout — cx=420 -->
+  <g transform="translate(340,130)">
+    <rect width="160" height="160" rx="16" fill="#1a1f2e"/>
+    <circle cx="80" cy="72" r="50" stroke="#818cf8" stroke-width="3" opacity="0.2"/>
+    <circle cx="80" cy="72" r="34" stroke="#818cf8" stroke-width="3" opacity="0.4"/>
+    <circle cx="80" cy="72" r="18" stroke="#818cf8" stroke-width="3" opacity="0.7"/>
+    <line x1="80" y1="72" x2="80" y2="22" stroke="#818cf8" stroke-width="5" stroke-linecap="round"/>
+    <line x1="80" y1="72" x2="118" y2="46" stroke="#818cf8" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+    <line x1="80" y1="14" x2="80" y2="130" stroke="#818cf8" stroke-width="1.5" opacity="0.12"/>
+    <line x1="22" y1="72" x2="138" y2="72" stroke="#818cf8" stroke-width="1.5" opacity="0.12"/>
+    <circle cx="114" cy="50" r="5.5" fill="#818cf8"/>
+    <text x="80" y="128" font-family="system-ui,sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="#818cf8" text-anchor="middle" opacity="0.8">STRATASCOUT</text>
+  </g>
+
+  <!-- Field Intelligence — cx=640 -->
+  <g transform="translate(570,130)">
+    <rect width="160" height="160" rx="16" fill="#1a1f2e"/>
+    <rect x="20" y="90" width="24" height="40" stroke="#38bdf8" stroke-width="4" fill="none" rx="3"/>
+    <rect x="66" y="68" width="24" height="62" stroke="#38bdf8" stroke-width="4" fill="none" rx="3"/>
+    <rect x="112" y="44" width="24" height="86" stroke="#38bdf8" stroke-width="4" fill="none" rx="3"/>
+    <polyline points="32,86 78,64 124,40" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <polyline points="112,34 124,40 118,52" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <line x1="14" y1="130" x2="146" y2="130" stroke="#38bdf8" stroke-width="2" opacity="0.25"/>
+    <text x="80" y="150" font-family="system-ui,sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="#38bdf8" text-anchor="middle" opacity="0.8">FIELD INTEL</text>
+  </g>
+
+  <!-- ── Row 2: Action modules (4 icons) ── y=330 -->
+  <line x1="80" y1="316" x2="1120" y2="316" stroke="#d4a843" stroke-width="0.5" opacity="0.12"/>
+  <text x="80" y="340" font-family="system-ui,sans-serif" font-size="9" font-weight="700" letter-spacing="4" fill="#6b7a99" opacity="0.8">ACTION MODULES</text>
+
+  <!-- Active Watch — cx=160 -->
+  <g transform="translate(80,352)">
+    <rect width="160" height="160" rx="16" fill="#1a1f2e"/>
+    <path d="M16 80C16 80 38 40 80 40C122 40 144 80 144 80C144 80 122 120 80 120C38 120 16 80 16 80Z" stroke="#fb923c" stroke-width="4" fill="none" stroke-linejoin="round"/>
+    <circle cx="80" cy="80" r="20" stroke="#fb923c" stroke-width="4" fill="none"/>
+    <circle cx="80" cy="80" r="7" fill="#fb923c" opacity="0.85"/>
+    <path d="M10 68C6 72 4 76 4 80" stroke="#fb923c" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.4"/>
+    <path d="M150 68C154 72 156 76 156 80" stroke="#fb923c" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.4"/>
+    <text x="80" y="146" font-family="system-ui,sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="#fb923c" text-anchor="middle" opacity="0.8">ACTIVE WATCH</text>
+  </g>
+
+  <!-- StrataLink — cx=370 -->
+  <g transform="translate(300,352)">
+    <rect width="160" height="160" rx="16" fill="#1a1f2e"/>
+    <circle cx="42" cy="80" r="20" stroke="#4ade80" stroke-width="4" fill="none"/>
+    <circle cx="118" cy="50" r="20" stroke="#4ade80" stroke-width="4" fill="none"/>
+    <circle cx="118" cy="110" r="20" stroke="#4ade80" stroke-width="4" fill="none"/>
+    <line x1="62" y1="75" x2="98" y2="56" stroke="#4ade80" stroke-width="4" stroke-linecap="round"/>
+    <line x1="62" y1="85" x2="98" y2="104" stroke="#4ade80" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="42" cy="80" r="7" fill="#4ade80" opacity="0.85"/>
+    <circle cx="118" cy="50" r="7" fill="#4ade80" opacity="0.85"/>
+    <circle cx="118" cy="110" r="7" fill="#4ade80" opacity="0.85"/>
+    <text x="80" y="148" font-family="system-ui,sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="#4ade80" text-anchor="middle" opacity="0.8">STRATALINK</text>
+  </g>
+
+  <!-- Strategist -- crown design -->
+  <g transform="translate(520,352)">
+    <rect width="160" height="160" rx="16" fill="#1a1f2e"/>
+    <rect x="22" y="110" width="116" height="20" rx="4" stroke="#f472b6" stroke-width="4" fill="none"/>
+    <path d="M22 110 L22 70 L58 94 L80 50 L102 94 L138 70 L138 110" stroke="#f472b6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="22" cy="70" r="6" fill="#f472b6" opacity="0.85"/>
+    <circle cx="80" cy="50" r="6" fill="#f472b6" opacity="0.85"/>
+    <circle cx="138" cy="70" r="6" fill="#f472b6" opacity="0.85"/>
+    <text x="80" y="148" font-family="system-ui,sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="#f472b6" text-anchor="middle" opacity="0.8">STRATEGIST</text>
+  </g>
+
+  <!-- Products — cx=790 -->
+  <g transform="translate(740,352)">
+    <rect width="160" height="160" rx="16" fill="#1a1f2e"/>
+    <path d="M26 58L80 38L134 58V108L80 128L26 108V58Z" stroke="#06b6d4" stroke-width="4" fill="none" stroke-linejoin="round"/>
+    <line x1="80" y1="38" x2="80" y2="128" stroke="#06b6d4" stroke-width="3" stroke-dasharray="6 4" opacity="0.4"/>
+    <polyline points="26,58 80,78 134,58" stroke="#06b6d4" stroke-width="3" fill="none"/>
+    <path d="M62 28C62 28 70 20 80 28C90 36 98 28 98 28" stroke="#06b6d4" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6"/>
+    <text x="80" y="148" font-family="system-ui,sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="#06b6d4" text-anchor="middle" opacity="0.8">PRODUCTS</text>
+  </g>
+
+  <!-- STRATAGORA agent -- two-hemisphere brain -->
+  <g transform="translate(950,240)">
+    <rect width="175" height="270" rx="16" fill="#1a1f2e" stroke="#a78bfa" stroke-width="1" opacity="0.3"/>
+    <text x="87" y="28" font-family="system-ui,sans-serif" font-size="9" font-weight="700" letter-spacing="3" fill="#a78bfa" text-anchor="middle" opacity="0.6">AI AGENT</text>
+    <ellipse cx="70" cy="86" rx="28" ry="38" stroke="#a78bfa" stroke-width="4" fill="none"/>
+    <ellipse cx="104" cy="86" rx="28" ry="38" stroke="#a78bfa" stroke-width="4" fill="none"/>
+    <line x1="87" y1="48" x2="87" y2="124" stroke="#a78bfa" stroke-width="2" opacity="0.22"/>
+    <path d="M54 72 C46 82 46 96 54 104" stroke="#a78bfa" stroke-width="2.5" fill="none" opacity="0.55" stroke-linecap="round"/>
+    <path d="M120 72 C128 82 128 96 120 104" stroke="#a78bfa" stroke-width="2.5" fill="none" opacity="0.55" stroke-linecap="round"/>
+    <path d="M52 136 H67 L76 150 L87 122 L98 136 H122" stroke="#a78bfa" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <text x="87" y="178" font-family="system-ui,sans-serif" font-size="13" font-weight="700" letter-spacing="2" fill="#a78bfa" text-anchor="middle" opacity="0.85">STRATAGORA</text>
+    <text x="87" y="196" font-family="system-ui,sans-serif" font-size="9" fill="#6b7a99" text-anchor="middle" letter-spacing="2">Core AI Agent</text>
+    <line x1="24" y1="210" x2="150" y2="210" stroke="#a78bfa" stroke-width="0.8" opacity="0.2"/>
+    <text x="87" y="228" font-family="system-ui,sans-serif" font-size="9" fill="#6b7a99" text-anchor="middle">Orchestrates all modules</text>
+    <text x="87" y="244" font-family="system-ui,sans-serif" font-size="9" fill="#6b7a99" text-anchor="middle">Signals + synthesis</text>
+  </g>
+
+  <!-- Footer -->
+  <line x1="80" y1="590" x2="1120" y2="590" stroke="#d4a843" stroke-width="0.8" opacity="0.15"/>
+  <text x="80" y="612" font-family="system-ui,sans-serif" font-size="10" fill="#6b7a99">Strategic Sales International ApS  |  jls@strategic.dk</text>
+  <text x="1120" y="612" font-family="system-ui,sans-serif" font-size="10" fill="#6b7a99" text-anchor="end">stratagent.io</text>
+</svg>

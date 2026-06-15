@@ -188,11 +188,10 @@ export default function StratAScout({ session }: { session: Session }) {
 
   useEffect(() => {
     api.get('/knowledge-base/').then(res => {
-      const list = (res.data || []).filter((s: any) =>
-        (s.intelligence_depth?.total ?? 0) >= 50
-      )
+      const list = (res.data || [])
       setSuppliers(list)
-      if (list.length === 1) setSupplierId(list[0].supplier_id || list[0].id)
+      const ready = list.filter((s: any) => (s.intelligence_depth?.total ?? 0) >= 30)
+      if (ready.length === 1) setSupplierId(ready[0].supplier_id || ready[0].id)
     }).catch(() => {})
     loadPool()
   }, [])
@@ -272,9 +271,16 @@ export default function StratAScout({ session }: { session: Session }) {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* ── Module identity ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-5">
+        <div style={{ width: 3, height: 18, borderRadius: 2, background: '#818cf8', flexShrink: 0 }} />
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#818cf8' }}>
+          STRATASCOUT
+        </span>
+      </div>
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h2 className="text-2xl font-black" style={{ color: 'var(--stratagent-text)' }}>
+          <h2 className="text-2xl font-black" style={{ color: '#818cf8' }}>
             STRATASCOUT
           </h2>
           <p className="text-sm mt-1" style={{ color: 'var(--stratagent-muted)' }}>
@@ -317,19 +323,41 @@ export default function StratAScout({ session }: { session: Session }) {
             {suppliers.length === 0 ? (
               <div className="px-4 py-3 rounded-lg text-sm"
                    style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: 'var(--stratagent-muted)' }}>
-                No suppliers with 50+ Intelligence Depth. Enrich your KBs first.
+                No suppliers found. Add a supplier in the Knowledge Base first.
               </div>
             ) : (
-              <select value={supplierId} onChange={e => { setSupplierId(e.target.value); localStorage.setItem('scout_last_supplier', e.target.value); loadPool(e.target.value) }}
-                      className="w-full px-4 py-3 rounded-lg text-sm outline-none"
-                      style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: supplierId ? 'var(--stratagent-text)' : 'var(--stratagent-muted)' }}>
-                <option value="" disabled>Select supplier</option>
-                {suppliers.map(s => (
-                  <option key={s.supplier_id || s.id} value={s.supplier_id || s.id}>
-                    {s.company_name} — {Math.round(s.intelligence_depth?.total ?? 0)} depth
-                  </option>
-                ))}
-              </select>
+              <>
+                <select value={supplierId} onChange={e => { setSupplierId(e.target.value); localStorage.setItem('scout_last_supplier', e.target.value); loadPool(e.target.value) }}
+                        className="w-full px-4 py-3 rounded-lg text-sm outline-none"
+                        style={{ background: 'var(--stratagent-dark)', border: '1px solid var(--stratagent-border)', color: supplierId ? 'var(--stratagent-text)' : 'var(--stratagent-muted)' }}>
+                  <option value="" disabled>Select supplier</option>
+                  {suppliers.map(s => {
+                    const depth = Math.round(s.intelligence_depth?.total ?? 0)
+                    const ready = depth >= 30
+                    return (
+                      <option key={s.supplier_id || s.id} value={s.supplier_id || s.id} disabled={!ready}>
+                        {s.company_name} — {depth} depth{!ready ? ' (needs 30+ to hunt)' : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+                {supplierId && (() => {
+                  const d = suppliers.find(s => (s.supplier_id || s.id) === supplierId)?.intelligence_depth?.total ?? 0
+                  if (d < 30) return (
+                    <div className="mt-2 px-3 py-2 rounded-lg text-xs"
+                         style={{ background: '#1c0a0a', border: '1px solid #7f1d1d', color: '#fca5a5' }}>
+                      Intelligence Depth below 30 — add web sources or fill in profile fields in the Knowledge Base before hunting.
+                    </div>
+                  )
+                  if (d < 50) return (
+                    <div className="mt-2 px-3 py-2 rounded-lg text-xs"
+                         style={{ background: '#1c1400', border: '1px solid #78350f', color: '#fcd34d' }}>
+                      Depth {Math.round(d)}/100 — hunt will work but results improve significantly above 50. Consider enriching the KB first.
+                    </div>
+                  )
+                  return null
+                })()}
+              </>
             )}
           </div>
 

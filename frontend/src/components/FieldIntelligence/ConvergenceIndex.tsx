@@ -15,9 +15,30 @@ const PATH_LABELS: Record<string, { label: string; color: string; description: s
     description: 'Insight email only. Open the door, don\'t walk through it yet.',
   },
   PARK: {
-    label: 'INSUFFICIENT ALIGNMENT',
+    label: 'PARK & WATCH',
+    color: '#64748b',
+    description: 'Insufficient alignment now. Watch for a buying signal.',
+  },
+  // Channel research paths
+  CHANNEL_PITCH_BRIEF: {
+    label: 'CHANNEL PITCH BRIEF',
+    color: '#22c55e',
+    description: 'Strong channel fit. Pitch brief ready to send.',
+  },
+  EXPLORE: {
+    label: 'EXPLORE',
+    color: '#f59e0b',
+    description: 'Promising channel. Gather more data before pitching.',
+  },
+  MONITOR: {
+    label: 'MONITOR',
+    color: '#94a3b8',
+    description: 'Not ready yet. Watch for conditions to improve.',
+  },
+  SKIP: {
+    label: 'SKIP',
     color: '#ef4444',
-    description: 'Park this opportunity and watch for the right moment.',
+    description: 'Poor channel fit. Focus resources elsewhere.',
   },
 }
 
@@ -32,7 +53,7 @@ export default function ConvergenceIndex({
   reasoning?: string
   recommendedPath?: string
 }) {
-  const path = PATH_LABELS[recommendedPath || 'PARK']
+  const path = PATH_LABELS[recommendedPath || 'PARK'] ?? PATH_LABELS['PARK']
   const color = score >= 90 ? '#10b981' : score >= 75 ? '#3b82f6' : score >= 60 ? '#f59e0b' : '#ef4444'
 
   return (

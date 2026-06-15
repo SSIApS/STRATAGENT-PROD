@@ -50,13 +50,13 @@ async def run_hunt(payload: HuntRequest, x_session_id: str = Header(...)):
         raise HTTPException(status_code=404, detail="Knowledge Base not found")
 
     intel_total = kb.get("intelligence_depth", {}).get("total", 0)
-    if intel_total < 50:
+    if intel_total < 30:
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "INTELLIGENCE GAP -- Knowledge Base below 50%. Enrich the supplier KB before hunting prospects.",
+                "message": "INTELLIGENCE GAP -- Knowledge Base below 30%. Add web sources or fill in the profile fields before hunting prospects.",
                 "intelligence_depth": intel_total,
-                "required": 50,
+                "required": 30,
             }
         )
 

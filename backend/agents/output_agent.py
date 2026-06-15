@@ -3,9 +3,12 @@ STRATAGENT -- Output Agent
 Generates graduated documents using Gemini.
 Uses section markers instead of JSON to avoid parse failures on large responses.
 """
+import logging
 import re
 from datetime import date
 from services.gemini import generate
+
+logger = logging.getLogger(__name__)
 
 TODAY = date.today().strftime('%d %B %Y')
 
@@ -120,6 +123,39 @@ async def generate_convergence_proposal(profile: dict, kb: dict) -> dict:
         for s in signals[:5]
     ) or '  - No confirmed signals -- approach based on project/operational intelligence'
 
+    proposal_structure = f"""## {kb.get('company_name')} Proposal for [Prospect Name]: [one-line value headline]
+
+**Prepared for:** [Decision maker name, title, company]
+**Prepared by:** Strategic Sales International ApS, on behalf of {kb.get('company_name')}
+**Date:** {TODAY}
+**Singularity Density:** 90/100
+
+### Why Now
+[4-5 bullet points -- the specific intelligence that triggered this proposal.
+Reference the actual signals, commissioning dates, regulatory requirements.
+This section proves the homework was done. Be factual and specific.]
+
+### 1. Understanding [Prospect]'s Situation
+[Operational context -- specific, references real projects]
+
+### 2. Proposed Solution
+[Supplier's integrated offering matched to the specific need]
+
+#### 2.1. [Product category 1]
+[Detail with specs and materials]
+
+#### 2.2. [Product category 2]
+[Detail]
+
+### 3. Technical Differentiators
+[3-4 specific differentiators relevant to this prospect's environment]
+
+### 4. Certifications
+[Only certifications that apply to this prospect's environment]
+
+### 5. Next Steps
+[Specific -- reference a commissioning deadline or meeting window]"""
+
     prompt = f"""You are STRATAGENT generating a CONVERGENCE PROPOSAL (SD 90/100).
 Every document must be sign-ready without editing.
 
@@ -143,66 +179,61 @@ Approach window: {profile.get('approach_window', '')}
 BUYING SIGNALS (drove SD to 90):
 {signal_summary}
 
-Write three documents using these EXACT section markers. Do not add anything outside the markers.
+=======================
+SECTION 1 -- EMAIL RULES
+=======================
+{_EMAIL_RULES}
+
+=========================================
+SECTION 2 -- TECHNICAL PROPOSAL STRUCTURE
+Use markdown headings (##, ###, ####) and bullet points (* item).
+=========================================
+{proposal_structure}
+
+=========================================
+SECTION 3 -- ENGAGEMENT BRIEF / RFQ FRAMEWORK
+Use markdown (##, ###, **Label:**).
+Reference the actual projects, environments, and requirements from the intelligence above.
+Use {TODAY} as the date. Leave placeholders only where the prospect must supply data (e.g. quantities).
+=========================================
+
+{_NO_FOOTER_RULE}
+
+===================================================================
+OUTPUT INSTRUCTIONS -- READ CAREFULLY:
+Your ENTIRE response must consist of the three sections below, wrapped in
+these EXACT marker strings. Write NOTHING before ===EMAIL=== and NOTHING
+after ===END_ENGAGEMENT===. Do not add commentary, preamble, or sign-offs
+outside the markers.
+===================================================================
 
 ===EMAIL===
-{_EMAIL_RULES}
-Write the email here.
+[Write the outreach email here, following SECTION 1 EMAIL RULES above]
 ===END_EMAIL===
 
 ===PROPOSAL===
-Write a full technical proposal using markdown headings (##, ###, ####) and bullet points (* item).
-
-Structure:
-## {kb.get('company_name')} Proposal for [Prospect]: [one-line value headline]
-
-**Prepared for:** [Decision maker name, title, company]
-**Prepared by:** Strategic Sales International ApS, on behalf of {kb.get('company_name')}
-**Date:** {TODAY}
-**Singularity Density:** 90/100
-
-### Why Now
-[4-5 bullet points -- the specific intelligence that triggered this proposal.
-Reference the actual signals, commissioning dates, regulatory requirements from above.
-This section proves the homework was done. Be factual and specific.]
-
-### 1. Understanding [Prospect]'s Situation
-[Operational context -- specific, references real projects]
-
-### 2. Proposed Solution
-[Supplier's integrated offering matched to the specific need]
-
-#### 2.1. [Product category 1]
-[Detail with specs and materials]
-
-#### 2.2. [Product category 2]
-[Detail]
-
-### 3. Technical Differentiators
-[3-4 specific differentiators relevant to this prospect's environment]
-
-### 4. Certifications
-[Only certifications that apply to this prospect's environment]
-
-### 5. Next Steps
-[Specific -- reference a commissioning deadline or meeting window]
+[Write the full technical proposal here, following SECTION 2 STRUCTURE above]
 ===END_PROPOSAL===
 
 ===ENGAGEMENT===
-Write a pre-completed RFQ framework using markdown (##, ###, **Label:**).
-Reference the actual projects, environments, and requirements from the intelligence.
-Use {TODAY} as the date. Leave placeholders only where the prospect must supply data (e.g. quantities).
+[Write the RFQ framework here, following SECTION 3 ENGAGEMENT BRIEF instructions above]
 ===END_ENGAGEMENT===
-
-{_NO_FOOTER_RULE}
 """
 
     response = await generate(prompt, temperature=0.35)
     result = _parse_sections(response)
 
     if not result.get('email'):
-        # Last resort fallback -- something is very wrong with the response
-        result['email'] = f"[Generation failed -- check backend logs]\n\nRaw response:\n{response[:500]}"
+        # Parsing failed -- log raw response so we can diagnose
+        logger.error(
+            "CONVERGENCE PROPOSAL: _parse_sections failed to extract email.\n"
+            "Raw response (first 1000 chars):\n%s",
+            response[:1000]
+        )
+        result['email'] = (
+            "[Generation failed -- check backend logs]\n\n"
+            f"Raw response:\n{response[:500]}"
+        )
 
     return result
 
@@ -215,6 +246,18 @@ async def generate_mutual_value_brief(profile: dict, kb: dict) -> dict:
     if isinstance(dm, dict):
         full = dm.get('name', '') or ''
         first_name = full.split()[0] if full else ''
+
+    brief_structure = f"""## Value Brief: {kb.get('company_name')} for [Prospect Name]
+**Date:** {TODAY} | **Prepared by:** Strategic Sales International ApS
+
+### The Situation
+[2-3 sentences: what we know about their context and why this supplier is relevant]
+
+### What {kb.get('company_name')} Offers
+[3-4 specific capabilities matched to their situation -- with real product names and specs]
+
+### The Fit
+[Why this is a strong match -- specific, not generic]"""
 
     prompt = f"""You are STRATAGENT generating a MUTUAL VALUE BRIEF (SD 75-89).
 Every document must be sign-ready without editing.
@@ -233,42 +276,49 @@ Operational context: {profile.get('operational_context', '')}
 Buying trigger: {profile.get('buying_trigger', '')}
 Decision maker: {profile.get('decision_maker', '')}
 
-Write three documents using EXACT section markers.
-
-===EMAIL===
+SECTION 1 -- EMAIL RULES
 {_EMAIL_RULES}
-Write the email here.
-===END_EMAIL===
 
-===BRIEF===
-Write a mutual value brief using markdown headings and bullet points.
+SECTION 2 -- VALUE BRIEF STRUCTURE
+Use markdown headings and bullet points.
+{brief_structure}
 
-## Value Brief: {kb.get('company_name')} for [Prospect Name]
-**Date:** {TODAY} | **Prepared by:** Strategic Sales International ApS
-
-### The Situation
-[2-3 sentences: what we know about their context and why this supplier is relevant]
-
-### What {kb.get('company_name')} Offers
-[3-4 specific capabilities matched to their situation -- with real product names and specs]
-
-### The Fit
-[Why this is a strong match -- specific, not generic]
-===END_BRIEF===
-
-===QUESTIONS===
+SECTION 3 -- QUALIFYING QUESTIONS
 Write 5 qualifying questions for the first discovery call.
 Number each question on its own line.
 Each must be specific to what we know about this prospect.
-===END_QUESTIONS===
 
 {_NO_FOOTER_RULE}
+
+OUTPUT INSTRUCTIONS -- READ CAREFULLY:
+Your ENTIRE response must consist of the three sections below, wrapped in
+these EXACT marker strings. Write NOTHING before ===EMAIL=== and NOTHING
+after ===END_QUESTIONS===. Do not add commentary, preamble, or sign-offs
+outside the markers.
+
+===EMAIL===
+[Write the outreach email here, following SECTION 1 EMAIL RULES above]
+===END_EMAIL===
+
+===BRIEF===
+[Write the value brief here, following SECTION 2 STRUCTURE above]
+===END_BRIEF===
+
+===QUESTIONS===
+[Write 5 numbered qualifying questions here, following SECTION 3 instructions above]
+===END_QUESTIONS===
 """
 
     response = await generate(prompt, temperature=0.4)
     result = _parse_sections(response)
 
     if not result.get('email'):
+        import logging as _logging
+        _logging.getLogger(__name__).error(
+            "MUTUAL VALUE BRIEF: _parse_sections failed to extract email.\n"
+            "Raw response (first 1000 chars):\n%s",
+            response[:1000]
+        )
         result['email'] = f"[Generation failed]\n\n{response[:300]}"
 
     return result
@@ -297,18 +347,30 @@ PROSPECT: {profile.get('company_overview', '')}
 Context: {profile.get('operational_context', '')}
 Trigger: {profile.get('buying_trigger', 'Not identified')}
 
-===EMAIL===
+EMAIL RULES
 {_EMAIL_RULES}
-Write the email here.
-===END_EMAIL===
 
 {_NO_FOOTER_RULE}
+
+OUTPUT INSTRUCTIONS: Your ENTIRE response must be the email wrapped in
+these EXACT markers. Write NOTHING before ===EMAIL=== and NOTHING after
+===END_EMAIL===.
+
+===EMAIL===
+[Write the outreach email here, following the EMAIL RULES above]
+===END_EMAIL===
 """
 
     response = await generate(prompt, temperature=0.45)
     result = _parse_sections(response)
 
     if not result.get('email'):
+        import logging as _logging
+        _logging.getLogger(__name__).error(
+            "FIRST SIGNAL: _parse_sections failed to extract email.\n"
+            "Raw response (first 1000 chars):\n%s",
+            response[:1000]
+        )
         result['email'] = f"[Generation failed]\n\n{response[:300]}"
 
     result['word_count'] = len(result.get('email', '').split())
